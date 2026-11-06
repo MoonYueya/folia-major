@@ -81,7 +81,7 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "chthollyphile",
+        "owner": "MoonYueya",
         "repo": "folia-major"
       }
     ],

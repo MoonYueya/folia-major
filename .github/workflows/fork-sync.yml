@@ -1,0 +1,330 @@
+name: Fork Sync and Windows Release
+
+# 每天把 upstream 的 main 合进 fork 的 main，合并结果通过 typecheck/单测后推回 fork，
+# 再用与上游 .github/workflows/electron-release.yml 相同的 Windows 步骤打安装包，
+# 发布到 fork（MoonYueya/folia-major）的 Releases。
+#
+# 应用内更新为什么能认出这些版本：
+#   electron/updateChannels.cjs 的 realeco 渠道 = channel "latest" + allowPrerelease false +
+#   无 rollingReleaseTag，于是 electron/main.cjs 的 configureAutoUpdaterChannel 会把 github
+#   provider 指的 owner/repo 设成 MoonYueya/folia-major；electron-updater 在 allowPrerelease
+#   为 false 时走 GitHubProvider.getLatestTagName()（GET /releases/latest）再去
+#   /releases/download/<tag>/latest.yml。所以这里必须：发布正式的（非 prerelease）Release，
+#   并且让 electron-builder 生成 latest.yml —— 版本带 -spotify.N 后缀时默认会推出
+#   spotify.yml，因此打包时必须显式传 --config.publish.channel=latest。
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: fork-sync
+  cancel-in-progress: false
+
+env:
+  UPSTREAM_REPOSITORY: chthollyphile/folia-major
+  FORK_RELEASE_CHANNEL: realeco
+  FORK_RELEASE_CHANNEL_FILE: latest
+
+jobs:
+  sync:
+    name: Merge upstream into main
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    outputs:
+      should_build: ${{ steps.decide.outputs.should_build }}
+      version: ${{ steps.upstream.outputs.version }}
+      upstream_commits: ${{ steps.upstream.outputs.count }}
+
+    steps:
+      - name: Check out Git repository
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Configure git identity
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          author_id="$(gh api user -q .id 2>/dev/null || echo 153089311)"
+          git config user.name 'MoonYueya'
+          git config user.email "${author_id}+MoonYueya@users.noreply.github.com"
+
+      - name: Fetch upstream main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git remote add upstream "https://github.com/${UPSTREAM_REPOSITORY}.git" 2>/dev/null \
+            || git remote set-url upstream "https://github.com/${UPSTREAM_REPOSITORY}.git"
+          git fetch --no-tags upstream main
+
+      - name: Read upstream package version
+        id: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          count="$(git rev-list --count HEAD..upstream/main)"
+          git show upstream/main:package.json > upstream-package.json
+          version="$(node -p "JSON.parse(require('fs').readFileSync('upstream-package.json', 'utf8')).version")"
+          rm -f upstream-package.json
+          echo "count=${count}" >> "${GITHUB_OUTPUT}"
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "upstream/main 领先 main ${count} 个提交，上游版本 ${version}"
+
+      - name: Merge upstream main
+        id: merge
+        if: steps.upstream.outputs.count != '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git merge --no-edit upstream/main; then
+            echo 'conflict=false' >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          files="$(git diff --name-only --diff-filter=U | sort)"
+          git merge --abort
+          echo 'conflict=true' >> "${GITHUB_OUTPUT}"
+          {
+            echo 'conflict_files<<FORK_SYNC_EOF'
+            echo "${files}"
+            echo 'FORK_SYNC_EOF'
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Open conflict issue
+        if: steps.merge.outputs.conflict == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CONFLICT_FILES: ${{ steps.merge.outputs.conflict_files }}
+        run: |
+          set -euo pipefail
+          title="[fork-sync] 上游合并冲突 $(date -u +%Y-%m-%d)"
+          {
+            echo '把 `upstream/main` 合进 `main` 时出现冲突，本次同步已中止，没有打包。'
+            echo
+            echo '冲突文件：'
+            echo
+            echo '```'
+            echo "${CONFLICT_FILES}"
+            echo '```'
+            echo
+            echo "运行记录：${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo
+            echo '处理方式：本地解决冲突后 push main，下一次同步会接着往下走。'
+          } > conflict-issue.md
+          if gh api "repos/${GITHUB_REPOSITORY}/issues?state=open&per_page=100" -q '.[].title' | grep -Fxq "${title}"; then
+            echo '今天的冲突 issue 已存在，不重复创建。'
+          else
+            gh issue create --repo "${GITHUB_REPOSITORY}" --title "${title}" --body-file conflict-issue.md
+          fi
+          echo '::error::上游合并冲突，详情见上面的 issue。'
+          exit 1
+
+      - name: Decide whether to build
+        id: decide
+        shell: bash
+        env:
+          UPSTREAM_COMMITS: ${{ steps.upstream.outputs.count }}
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_EVENT_NAME}" == 'workflow_dispatch' || "${UPSTREAM_COMMITS}" != '0' ]]; then
+            echo 'should_build=true' >> "${GITHUB_OUTPUT}"
+          else
+            echo 'should_build=false' >> "${GITHUB_OUTPUT}"
+            echo '上游没有新提交且不是手动触发，本次不打包。'
+          fi
+
+      - name: Install Node.js
+        if: steps.decide.outputs.should_build == 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        if: steps.decide.outputs.should_build == 'true'
+        run: npm ci
+
+      - name: Run typecheck
+        if: steps.decide.outputs.should_build == 'true'
+        run: npm run typecheck
+
+      - name: Run unit tests
+        if: steps.decide.outputs.should_build == 'true'
+        run: npm run test:unit
+
+      - name: Push main
+        if: steps.decide.outputs.should_build == 'true'
+        shell: bash
+        run: git push origin HEAD:main
+
+  package:
+    name: Build and publish Windows installer
+    needs: sync
+    if: needs.sync.outputs.should_build == 'true' && needs.sync.outputs.version != ''
+    runs-on: windows-latest
+    timeout-minutes: 150
+    env:
+      TARGET_VERSION: ${{ needs.sync.outputs.version }}-spotify.${{ github.run_number }}
+
+    steps:
+      - name: Check out Git repository
+        uses: actions/checkout@v6
+        with:
+          ref: main
+
+      - name: Resolve release tag
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "${TARGET_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+-spotify\.[0-9]+$ ]]; then
+            echo "::error::意外的版本号 ${TARGET_VERSION}"
+            exit 1
+          fi
+          echo "tag=v${TARGET_VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "构建版本 ${TARGET_VERSION}"
+
+      - name: Install Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+
+      - name: Cache wallpaper-helper Cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: packaging/windows/wallpaper-helper
+
+      - name: Build wallpaper helper
+        run: node packaging/windows/build-wallpaper-helper.mjs
+
+      - name: Stamp package metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          node -e "const fs=require('fs'); const pkg=require('./package.json'); pkg.version=process.env.TARGET_VERSION; pkg.foliaReleaseChannel=process.env.FORK_RELEASE_CHANNEL; fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');"
+
+      - name: Generate release notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          {
+            echo 'Folia（MoonYueya fork）自动构建的 Windows 安装包。'
+            echo
+            echo "- 版本：`${TARGET_VERSION}`"
+            echo "- 对应上游版本：`${{ needs.sync.outputs.version }}`"
+            echo "- 本次合入的上游提交数：${{ needs.sync.outputs.upstream_commits }}"
+            echo "- 上游仓库：https://github.com/${UPSTREAM_REPOSITORY}"
+            echo
+            echo '由 `.github/workflows/fork-sync.yml` 生成；安装包未做代码签名。'
+          } > build/release-notes.md
+
+      - name: Build web app for Electron
+        env:
+          ELECTRON: 'true'
+          APP_VERSION_LABEL: 'Realeco'
+          APP_RELEASE_CHANNEL: ${{ env.FORK_RELEASE_CHANNEL }}
+        run: npm run build
+
+      - name: Cache MNN runtime build
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/.mnn-src
+            build/mnn
+          key: mnn-${{ runner.os }}-${{ hashFiles('build/buildMnnRuntime.mjs', 'native/folia-mnn/**') }}
+
+      - name: Package Electron app
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npx electron-builder --win --publish never --config.publish.channel=${{ env.FORK_RELEASE_CHANNEL_FILE }}
+
+      - name: Verify update metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          yml="release/${FORK_RELEASE_CHANNEL_FILE}.yml"
+          if [[ ! -f "${yml}" ]]; then
+            echo "::error::没有生成 ${yml}，应用内更新会取不到元数据"
+            ls -la release || true
+            exit 1
+          fi
+          version="$(sed -n 's/^version:[[:space:]]*//p' "${yml}" | head -n1 | tr -d "'\"")"
+          if [[ "${version}" != "${TARGET_VERSION}" ]]; then
+            echo "::error::${yml} 里的 version 是 ${version}，与 ${TARGET_VERSION} 不一致"
+            exit 1
+          fi
+          echo "${yml} version=${version}，与 tag 一致"
+
+      - name: Upload packaged artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: fork-windows
+          path: |
+            release/*.exe
+            release/*.blockmap
+            release/*.yml
+            !release/builder-debug.yml
+            build/release-notes.md
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish fork release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          set -euo pipefail
+          mapfile -d '' files < <(find release -maxdepth 1 -type f \
+            \( -name '*.exe' -o -name '*.blockmap' -o -name '*.yml' \) \
+            ! -name 'builder-debug.yml' -print0)
+          if [[ ${#files[@]} -eq 0 ]]; then
+            echo '::error::release 目录里没有可发布的产物'
+            exit 1
+          fi
+          printf '发布资产：%s\n' "${files[@]}"
+          if gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            gh release upload "${RELEASE_TAG}" "${files[@]}" --repo "${GITHUB_REPOSITORY}" --clobber
+          else
+            gh release create "${RELEASE_TAG}" "${files[@]}" --repo "${GITHUB_REPOSITORY}" \
+              --title "Folia ${TARGET_VERSION}" --notes-file build/release-notes.md \
+              --target "$(git rev-parse HEAD)" --latest
+          fi
+
+      - name: Verify electron-updater discovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/latest.yml"
+          for attempt in $(seq 1 10); do
+            body="$(curl -sSL --max-time 30 "${url}" || true)"
+            version="$(printf '%s\n' "${body}" | sed -n 's/^version:[[:space:]]*//p' | head -n1 | tr -d "'\"")"
+            if [[ "${version}" == "${TARGET_VERSION}" ]]; then
+              printf '%s\n' "${body}" | head -n 6
+              echo "更新入口 OK：${url} -> ${version}"
+              exit 0
+            fi
+            echo "第 ${attempt} 次：${url} 还没有 ${TARGET_VERSION}（当前：${version:-空}），30 秒后重试"
+            sleep 30
+          done
+          echo '::error::releases/latest 仍未提供本版本的 latest.yml，应用内更新会找不到它'
+          exit 1
