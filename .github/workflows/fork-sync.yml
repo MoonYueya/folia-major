@@ -229,8 +229,8 @@ jobs:
           {
             echo 'Folia（MoonYueya fork）自动构建的 Windows 安装包。'
             echo
-            echo "- 版本：`${TARGET_VERSION}`"
-            echo "- 对应上游版本：`${{ needs.sync.outputs.version }}`"
+            echo "- 版本：${TARGET_VERSION}"
+            echo "- 对应上游版本：${{ needs.sync.outputs.version }}"
             echo "- 本次合入的上游提交数：${{ needs.sync.outputs.upstream_commits }}"
             echo "- 上游仓库：https://github.com/${UPSTREAM_REPOSITORY}"
             echo
