@@ -12,9 +12,10 @@ import type { SpotifyWireClientStatus } from './spotifyTransport';
 // songs that follow are put in the app's queue, so it moves on by itself without a gap; when it
 // does, the song Folia asked for is reported ended and the next play adopts the running track.
 //
-// D2: when the app cannot take the songs at all (not installed, or neither its DevTools port nor
-// the system media session answers), this route is given up for the rest of the run and Spotify's
-// songs play through Folia's own player (electron/spotify/audio.cjs) instead of failing.
+// This is the third way Spotify plays (spotifySoloistPlayback.ts keeps which one is on; the
+// provider's `externalPlayback` picks this one or Soloist's by it). When the app is not on this
+// computer a song fails with a reason that opens the setup checklist (spotifySetup.ts), where the
+// other ways are offered: nothing falls back to Folia's own player, which a free account cannot use.
 // M4: the media session names no track. While it answers, nothing is prepared in the app's queue,
 // its coarse position never replaces the song's duration, and a title it shows that is not the
 // song Folia asked for ends this external session so Folia's own queue takes the next song.
@@ -47,8 +48,6 @@ interface Attempt {
 let attempt: Attempt | null = null;
 /** The id the app already moved on to by itself; the next play of it starts nothing. */
 let handoffId: string | null = null;
-/** Whether the app can be steered here: 'unknown' until it was asked once (D2). */
-let availability: 'unknown' | 'available' | 'unusable' = 'unknown';
 /** The question being asked, so two songs in a row ask it once. */
 let probing: Promise<boolean> | null = null;
 
@@ -57,40 +56,24 @@ const spotifyTransportReady = (): boolean => (
     typeof window !== 'undefined' && typeof window.electron?.spotifyRequest === 'function' && window.electron?.platform === 'win32'
 );
 
-/** The steering runs on the Windows desktop app only, and only while it can take the songs (D2). */
-export const canSteerSpotifyApp = (): boolean => spotifyTransportReady() && availability !== 'unusable';
+/** The steering runs on the Windows desktop app only. */
+export const canSteerSpotifyApp = (): boolean => spotifyTransportReady();
 
 /**
- * Whether Spotify's app is on this computer (D2). The desktop side only looks at the launcher on
- * disk and keeps its answer for a minute, so this costs no process and no port; a song asks it
- * before it is sent, and a "no" sends the song down Folia's own player instead of failing it.
+ * Whether Spotify's app is on this computer. The desktop side only looks at the launcher on disk
+ * and keeps its answer for a minute, so this costs no process and no port. A question that could
+ * not be asked says nothing about the app: it counts as a yes, and the call itself then fails with
+ * the real reason.
  */
 export const probeSpotifyClientApp = async (): Promise<boolean> => {
     if (!spotifyTransportReady()) return false;
-    if (availability === 'available') return true;
-    if (availability === 'unusable') return false;
     probing ??= requestSpotify<{ available?: boolean }>('client_probe')
-        .then(answer => {
-            availability = answer?.available === true ? 'available' : 'unusable';
-            if (availability === 'unusable') {
-                console.info('[SpotifyClient] Spotify\'s app cannot be steered here; its songs play in Folia');
-            }
-            return availability === 'available';
-        }, error => {
-            // A question that could not be asked says nothing about the app: it is asked again.
+        .then(answer => answer?.available === true, error => {
             console.warn('[SpotifyClient] whether Spotify\'s app is installed could not be read', error);
-            return availability !== 'unusable';
+            return true;
         })
         .finally(() => { probing = null; });
     return probing;
-};
-
-/** The app said it cannot take the song: this run stops steering and plays its songs here (D2). */
-const giveUpSteering = (error: unknown): void => {
-    const code = (error as { code?: string } | null)?.code;
-    if (code !== 'unavailable' && code !== 'unsupported') return;
-    availability = 'unusable';
-    console.warn('[SpotifyClient] the Spotify app cannot take the song; its songs play in Folia from now on', error);
 };
 
 const songIdOf = (song: SongResult): string | null => {
@@ -198,7 +181,7 @@ export const statusOfClient = (data: SpotifyWireClientStatus): ProviderExternalP
 };
 
 export const spotifyClientPlayback: OnlineExternalPlaybackProvider = {
-    canPlay: song => canSteerSpotifyApp() && songIdOf(song) !== null,
+    canPlay: song => songIdOf(song) !== null,
     isPrepared(song) {
         const id = songIdOf(song);
         return id !== null && (handoffId === id || Boolean(attempt?.hasPlayed && attempt.nextIds[0] === id));
@@ -224,9 +207,9 @@ export const spotifyClientPlayback: OnlineExternalPlaybackProvider = {
     async play(song, startSec, options: ExternalPlaybackStartOptions = {}) {
         const id = songIdOf(song);
         if (!id) throw new OnlineProviderError('not-playable', 'Not a Spotify track', 'spotify');
-        // The song goes to Folia's own player when the app cannot take it, rather than failing (D2).
         if (!(await probeSpotifyClientApp())) {
-            throw new OnlineProviderError('unavailable', 'The Spotify app cannot play the song', 'spotify');
+            console.warn('[SpotifyClient] the Spotify app is not on this computer; the song cannot play in it');
+            throw new OnlineProviderError('unavailable', 'The Spotify app is not installed', 'spotify', 'client-missing');
         }
         const startMs = Math.max(0, Math.round(startSec * 1000));
         const adopt = handoffId === id && startMs === 0;
@@ -242,27 +225,18 @@ export const spotifyClientPlayback: OnlineExternalPlaybackProvider = {
             return;
         }
         // An advance Folia made by itself is not a press: the desktop side is told so, and does not
-        // start or restart Spotify for it (T5).
+        // start or restart Spotify for it (T5): that one stops there when the app cannot be reached.
         const userAction = options.userAction !== false;
-        try {
-            const answer = await requestSpotify<SpotifyClientPlayAnswer>('client_play', { id, startMs, userAction });
-            // A newer start replaced this one: nothing went wrong, and there is nothing to report (N8).
-            if (answer === 'preempted') {
-                console.info('[SpotifyClient] a newer play took the app; this one stops');
-                return;
-            }
-            // The app took the call and never got to the track: that is a failure of this song (N8).
-            // It is reported as one and does not retire the app for the run: one track Spotify will
-            // not load says nothing about the next one.
-            if (answer !== 'loaded') {
-                throw new OnlineProviderError('not-playable', 'The Spotify app did not load the song', 'spotify');
-            }
-        } catch (error) {
-            // An advance Folia made by itself that could not reach the app stops there (T5): the
-            // listener pressed nothing, so a restart that was not allowed is no reason to leave the
-            // app for the rest of the run. Only a press that the app refused retires the route (N1).
-            if (userAction) giveUpSteering(error);
-            throw error;
+        const answer = await requestSpotify<SpotifyClientPlayAnswer>('client_play', { id, startMs, userAction });
+        // A newer start replaced this one: nothing went wrong, and there is nothing to report (N8).
+        if (answer === 'preempted') {
+            console.info('[SpotifyClient] a newer play took the app; this one stops');
+            return;
+        }
+        // The app took the call and never got to the track: that is a failure of this song (N8).
+        // One track Spotify will not load says nothing about the next one.
+        if (answer !== 'loaded') {
+            throw new OnlineProviderError('not-playable', 'The Spotify app did not load the song', 'spotify');
         }
         console.info('[SpotifyClient] The app plays the song');
     },
@@ -319,8 +293,6 @@ export const spotifyClientPlayback: OnlineExternalPlaybackProvider = {
     isStatusForSong(song, status) {
         return status.mediaId !== '' && status.mediaId === songIdOf(song);
     },
-    // Asked once when the app starts: an app that is not installed must not be tried on every song (D2).
-    probe: () => probeSpotifyClientApp(),
     // The setting that wakes the player with Folia: the app has to be running with its DevTools
     // port before a song can be steered into it.
     warmUp: () => launchSpotifyApp(),
@@ -329,24 +301,15 @@ export const spotifyClientPlayback: OnlineExternalPlaybackProvider = {
 /** Starts Spotify's app with its DevTools port (the setting that wakes it with Folia, D1). */
 export const launchSpotifyApp = async (): Promise<void> => {
     if (!canSteerSpotifyApp()) return;
-    try {
-        await requestSpotify('client_launch');
-    } catch (error) {
-        giveUpSteering(error);
-        throw error;
-    }
+    await requestSpotify('client_launch');
 };
 
 /** Test seam: forgets the song asked for and what was read about the app. */
 export const resetSpotifyClientPlayback = (): void => {
     attempt = null;
     handoffId = null;
-    availability = 'unknown';
     probing = null;
 };
 
 /** Test seam: what is held of the song asked for. */
 export const spotifyClientAttempt = (): Attempt | null => attempt;
-
-/** Test seam: whether this run still steers the app. */
-export const spotifyClientAvailability = (): 'unknown' | 'available' | 'unusable' => availability;

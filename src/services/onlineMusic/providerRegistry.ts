@@ -100,12 +100,7 @@ export const canPlayOnlineMusicSong = (song: SongResult): boolean => {
         || (providerSupports(provider, 'externalPlayback') && Boolean(provider?.externalPlayback) && provider?.externalPlayback?.canPlay?.(song) !== false);
 };
 
-/**
- * The provider sounds this song in a player of its own outside this app. `capabilities.externalPlayback`
- * may be a getter — a provider whose own player turned out not to be there answers no (D2) — so the
- * route closes here and the song goes down the provider's own playback path (M1).
- * `externalPlayback.canPlay` is about one song, not about the route, and is asked by `omni.canPlaySong`.
- */
+/** The provider sounds this song in a player of its own outside this app. */
 export const canPlaySongExternally = (song: SongResult): boolean => {
     const provider = getOnlineMusicProviderForSong(song);
     return providerSupports(provider, 'externalPlayback') && Boolean(provider?.externalPlayback);

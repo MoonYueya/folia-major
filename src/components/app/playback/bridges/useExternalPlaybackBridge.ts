@@ -53,12 +53,6 @@ export function useExternalPlaybackBridge({ handleNextTrack, handlePrevTrack, ru
         };
     }, [isExternalRouteActive]);
 
-    // D2: whether each of those players can take songs here at all is asked once, at launch, so the
-    // first song already knows which route it takes; nothing is started by the question.
-    useEffect(() => {
-        void omni.probeExternalPlayers();
-    }, []);
-
     // The setting that wakes the players Folia steers but does not own: once per launch, and only
     // where the listener asked for it.
     useEffect(() => {

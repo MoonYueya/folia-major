@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // Folia: the song it was told to play, the handoff to a track Folia put in the app's queue, the end
 // of the song near its own end, an advertisement between songs, the fallback answer that names no
 // track (M4), the queue that is only written once the app took it (L4), and the run that stops
-// steering because the app cannot take the songs at all (D2).
+// steering fails with a reason of its own where the app is not on this computer.
 
 // A start answers the word the app answers with (N8): it took the track. Every other call answers
 // the probe's answer unless the test says otherwise.
@@ -17,6 +17,7 @@ vi.mock('@/services/onlineMusic/spotify/spotifyTransport', () => ({
     getSpotifyTransportAvailability: () => ({ configured: true }),
 }));
 import { OnlineProviderError } from '@/types/onlineMusic';
+import { describeSpotifyFailure } from '@/services/onlineMusic/spotify/spotifyFailure';
 import { normalizeSpotifySong } from '@/services/onlineMusic/spotify/spotifyNormalize';
 import {
     canSteerSpotifyApp, resetSpotifyClientPlayback, spotifyClientAttempt, spotifyClientPlayback, statusOfClient,
@@ -41,7 +42,7 @@ const degraded = (extra: Record<string, unknown> = {}) => ({
 });
 
 beforeEach(() => {
-    // The steering asks the desktop side whether the app is there at all (D2).
+    // The steering asks the desktop side whether the app is there at all.
     Object.defineProperty(window, 'electron', {
         value: { platform: 'win32', spotifyRequest: vi.fn() },
         configurable: true,
@@ -400,21 +401,31 @@ describe('a start and where it stopped', () => {
     });
 });
 
-describe('an app that cannot take the songs (D2)', () => {
-    it('gives the song back to Folia instead of failing it', async () => {
+describe('an app that is not there', () => {
+    it('fails the song with a reason that opens the setup checklist, and never plays it in Folia', async () => {
         request.mockResolvedValueOnce({ available: false });
-        await expect(spotifyClientPlayback.play!(songOf('a'), 0)).rejects.toMatchObject({ code: 'unavailable' });
-        expect(canSteerSpotifyApp()).toBe(false);
-        expect(spotifyClientPlayback.canPlay!(songOf('a'))).toBe(false);
+        await expect(spotifyClientPlayback.play!(songOf('a'), 0)).rejects.toMatchObject({ code: 'unavailable', cause: 'client-missing' });
+        expect(describeSpotifyFailure('audio', new OnlineProviderError('unavailable', 'x', 'spotify', 'client-missing'))).toEqual({ case: 'not-configured' });
+        // Nothing but the question was sent to the app.
+        expect(request).toHaveBeenCalledTimes(1);
+        expect(request).toHaveBeenCalledWith('client_probe');
     });
 
-    it('stops steering for the rest of the run when a play is refused as unavailable', async () => {
-        const a = songOf('a');
-        // The app is there (the probe), and then the play itself is refused.
+    it('asks again for the next song: installing the app later is enough, no restart of Folia', async () => {
+        request.mockResolvedValueOnce({ available: false });
+        await expect(spotifyClientPlayback.play!(songOf('a'), 0)).rejects.toMatchObject({ cause: 'client-missing' });
+        request.mockResolvedValueOnce({ available: true }).mockResolvedValueOnce('loaded');
+        await expect(spotifyClientPlayback.play!(songOf('a'), 0)).resolves.toBeUndefined();
+        expect(request).toHaveBeenCalledWith('client_play', expect.objectContaining({ id: id('a') }));
+    });
+
+    it('does not retire the app for the run when a play is refused as unavailable', async () => {
         request.mockResolvedValueOnce({ available: true })
             .mockRejectedValueOnce(new OnlineProviderError('unavailable', 'The Spotify app is not installed', 'spotify'));
-        await expect(spotifyClientPlayback.play!(a, 0)).rejects.toMatchObject({ code: 'unavailable' });
-        expect(canSteerSpotifyApp()).toBe(false);
+        await expect(spotifyClientPlayback.play!(songOf('a'), 0)).rejects.toMatchObject({ code: 'unavailable' });
+        expect(canSteerSpotifyApp()).toBe(true);
+        request.mockResolvedValueOnce({ available: true }).mockResolvedValueOnce('loaded');
+        await expect(spotifyClientPlayback.play!(songOf('b'), 0)).resolves.toBeUndefined();
     });
 
     it('keeps steering when the refusal is about the request itself', async () => {

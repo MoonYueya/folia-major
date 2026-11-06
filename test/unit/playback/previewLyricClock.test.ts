@@ -42,8 +42,6 @@ vi.mock('@/services/onlineMusic/omni', () => ({ omni: {
 } }));
 vi.mock('@/services/onlineMusic/externalPlayback', () => ({
     isExternalPlaybackSounding: () => env.externalSounding,
-    isExternalPlaying: () => env.externalSounding,
-    isExternalAdvertisement: () => false,
     getExternalPosition: () => env.externalPosition,
 }));
 vi.mock('@/hooks/useBeatFxTrack', () => ({ useBeatFxTrack: () => false }));

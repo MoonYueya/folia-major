@@ -42,6 +42,7 @@ import type {
     LoginLocalService,
     LoginMethod,
     LoginSelfCheckResult,
+    ProviderSetupView,
     ProviderNotice,
     LoginState,
     LoginTexts,
@@ -751,6 +752,31 @@ export const omni = {
         return await requireOnlineMusicProvider(providerId).auth?.runLoginSelfCheck?.() ?? null;
     },
 
+    // 登录读到账号之后还要不要多查一步（`checkAfterLogin`）。宽松查询：平台不在了就是不查。
+    checksAfterLogin(providerId: OmniProviderId): boolean {
+        return Boolean(getOnlineMusicProvider(providerId)?.auth?.checkAfterLogin);
+    },
+
+    // 登录之后的那一步检查：回一份要用的人做完的配置清单，没有要做的回 null。抛错照常抛出，由账户 controller 记日志。
+    async checkAfterLogin(providerId: OmniProviderId, methodId: string | null): Promise<ProviderSetupView | null> {
+        return await requireOnlineMusicProvider(providerId).auth?.checkAfterLogin?.(methodId) ?? null;
+    },
+
+    // 平台有没有配置清单（账号那一幅、命令面板与播放失败的提示据它给「播放设置」的入口）。宽松查询。
+    hasSetup(providerId: OmniProviderId): boolean {
+        return Boolean(getOnlineMusicProvider(providerId)?.auth?.getSetup);
+    },
+
+    async getSetup(providerId: OmniProviderId): Promise<ProviderSetupView | null> {
+        return await requireOnlineMusicProvider(providerId).auth?.getSetup?.() ?? null;
+    },
+
+    async runSetupAction(providerId: OmniProviderId, stepId: string, actionId: string, value?: string): Promise<ProviderSetupView> {
+        const auth = requireOnlineMusicProvider(providerId).auth;
+        if (!auth?.runSetupAction) return unsupported(providerId, 'setup');
+        return auth.runSetupAction(stepId, actionId, value);
+    },
+
     // 只有明确声明了这一次登录有效期的 provider 才由前端计时；其余照旧只认后端报出的过期状态。
     getLoginTtlMs(providerId: OmniProviderId): number | null {
         const ttlMs = requireOnlineMusicProvider(providerId).auth?.getLoginTtlMs?.();
@@ -1133,27 +1159,13 @@ export const omni = {
         await runRequest(provider, 'audio', () => provider.externalPlayback!.seek(seconds));
     },
 
-    // D2: asks every provider with an external player whether it can take songs here at all, once
-    // when the app starts, so the first song already knows which route it takes. A provider that
-    // fails to answer keeps whatever it knew; nothing here starts a player.
-    async probeExternalPlayers(): Promise<void> {
-        for (const provider of listOnlineMusicProviders()) {
-            const probe = provider.externalPlayback?.probe;
-            if (!probe) continue;
-            try {
-                await probe();
-            } catch (error) {
-                console.warn(`[Omni] ${provider.id}'s external player could not be asked whether it is there`, error);
-            }
-        }
-    },
-
     // Starts every registered provider's own player that has a start to give (a player that has to
     // be running before a song can sound in it), for the setting that wakes it with the app. A
     // provider that fails, or that has no external player here, does not stop the others.
     async warmUpExternalPlayers(): Promise<void> {
         for (const provider of listOnlineMusicProviders()) {
-            if (!providerSupports(provider, 'externalPlayback')) continue;
+            // A provider whose external player is only sometimes on (by the way it plays)
+            // decides inside its own warmUp.
             const external = provider.externalPlayback;
             if (!external?.warmUp) continue;
             try {
@@ -1164,7 +1176,7 @@ export const omni = {
         }
     },
 
-    // The external player's own volume (0 to 1), where it lets the app set it; nothing elsewhere.
+    // A player without its own level control is left alone: the call is a no-op, not an error.
     async setExternalPlaybackVolume(song: SongResult, volume: number): Promise<void> {
         const provider = providerForSong(song);
         if (!provider.externalPlayback?.setVolume) return;
