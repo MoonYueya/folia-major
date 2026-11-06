@@ -487,10 +487,37 @@ export interface ProviderExternalPlaybackStatus {
     durationMs: number;
     /** The player's own state says the track ran out. */
     ended: boolean;
+    /**
+     * With `ended`: the player was moved off the track by its own controls rather than by running
+     * out, and the app's queue takes the step in this direction instead of its usual advance.
+     */
+    skipped?: 'next' | 'previous';
     /** An intentional player-side seek, so small backward jumps must not be smoothed away. */
     seeking?: boolean;
     /** The player accepted a start/resume and is still buffering; this is not a user pause. */
     starting?: boolean;
+    /**
+     * The player is sounding an advertisement between songs (a free account has some): the app
+     * shows it as one, holds the song's clock, and reads no lyrics for it.
+     */
+    advertisement?: boolean;
+    /**
+     * The answer came from the player's fallback channel (Windows' media session) rather than the
+     * one that can be steered precisely: the app still follows it, coarsely. Told once per episode.
+     */
+    degraded?: boolean;
+}
+
+/**
+ * Who asked for a song to be started in a player outside Folia.
+ */
+export interface ExternalPlaybackStartOptions {
+    /**
+     * false only for an advance Folia made by itself at the end of a song, never for a press. A
+     * player that would have to be started or restarted for it is not woken, and reports that it
+     * cannot take the song instead (T5).
+     */
+    userAction?: boolean;
 }
 
 /**
@@ -499,6 +526,18 @@ export interface ProviderExternalPlaybackStatus {
  * Only the song's own provider can answer these calls.
  */
 export interface OnlineExternalPlaybackProvider {
+    /**
+     * Starts the player itself, for a player that has to be running before anything can sound in
+     * it. Absent where the player needs no start. Called once, at launch, and only where the
+     * listener asked for it (omni.warmUpExternalPlayers).
+     */
+    warmUp?(): Promise<void>;
+    /**
+     * Whether this player can take songs here at all, asked once when the app starts (D2): a player
+     * that is not installed must not be tried on every song. A cheap question, cached by the provider.
+     * False answers `capabilities.externalPlayback` no, and the songs go down the normal path.
+     */
+    probe?(): Promise<boolean>;
     /** False only for songs this external route already knows it cannot start; no network reads. */
     canPlay?(song: SongResult): boolean;
     /** Prepare a bounded successor queue without interrupting the current song. */
@@ -506,10 +545,12 @@ export interface OnlineExternalPlaybackProvider {
     /** Whether a handoff can reuse an already prepared successor (not a guarantee of buffered audio). */
     isPrepared?(song: SongResult): boolean;
     /** Starts `song` in the player at `startSec`, replacing whatever it played; resolves once started. */
-    play(song: SongResult, startSec: number): Promise<void>;
+    play(song: SongResult, startSec: number, options?: ExternalPlaybackStartOptions): Promise<void>;
     pause(): Promise<void>;
     resume(): Promise<void>;
     seek(seconds: number): Promise<void>;
+    /** Sets the player's own volume (0 to 1); absent where the player keeps a volume of its own. */
+    setVolume?(volume: number): Promise<void>;
     /** The player's state now, from no cache. */
     getStatus(song: SongResult): Promise<ProviderExternalPlaybackStatus>;
     /** Whether the player's loaded track is `song` (the id in `status` may be a playback id). */

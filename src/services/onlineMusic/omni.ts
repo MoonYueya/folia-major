@@ -6,6 +6,7 @@ import type {
     DailyStyleGroup,
     DailyStyleSelection,
     DailyStyleSongs,
+    ExternalPlaybackStartOptions,
     LoginStep,
     MediaId,
     OmniAudioSource,
@@ -1096,12 +1097,12 @@ export const omni = {
         return canPlaySongExternally(song);
     },
 
-    async playSongExternally(song: SongResult, startSec = 0): Promise<void> {
+    async playSongExternally(song: SongResult, startSec = 0, options: ExternalPlaybackStartOptions = {}): Promise<void> {
         const provider = providerForSong(song);
         if (!providerSupports(provider, 'externalPlayback') || !provider.externalPlayback) {
             return unsupported(provider.id, 'externalPlayback');
         }
-        await runRequest(provider, 'audio', () => provider.externalPlayback!.play(song, startSec));
+        await runRequest(provider, 'audio', () => provider.externalPlayback!.play(song, startSec, options));
     },
 
     isExternalPlaybackPrepared(song: SongResult): boolean {
@@ -1130,6 +1131,44 @@ export const omni = {
         const provider = providerForSong(song);
         if (!provider.externalPlayback) return unsupported(provider.id, 'externalPlayback');
         await runRequest(provider, 'audio', () => provider.externalPlayback!.seek(seconds));
+    },
+
+    // D2: asks every provider with an external player whether it can take songs here at all, once
+    // when the app starts, so the first song already knows which route it takes. A provider that
+    // fails to answer keeps whatever it knew; nothing here starts a player.
+    async probeExternalPlayers(): Promise<void> {
+        for (const provider of listOnlineMusicProviders()) {
+            const probe = provider.externalPlayback?.probe;
+            if (!probe) continue;
+            try {
+                await probe();
+            } catch (error) {
+                console.warn(`[Omni] ${provider.id}'s external player could not be asked whether it is there`, error);
+            }
+        }
+    },
+
+    // Starts every registered provider's own player that has a start to give (a player that has to
+    // be running before a song can sound in it), for the setting that wakes it with the app. A
+    // provider that fails, or that has no external player here, does not stop the others.
+    async warmUpExternalPlayers(): Promise<void> {
+        for (const provider of listOnlineMusicProviders()) {
+            if (!providerSupports(provider, 'externalPlayback')) continue;
+            const external = provider.externalPlayback;
+            if (!external?.warmUp) continue;
+            try {
+                await external.warmUp();
+            } catch (error) {
+                console.warn(`[Omni] ${provider.id}'s own player could not be started`, error);
+            }
+        }
+    },
+
+    // The external player's own volume (0 to 1), where it lets the app set it; nothing elsewhere.
+    async setExternalPlaybackVolume(song: SongResult, volume: number): Promise<void> {
+        const provider = providerForSong(song);
+        if (!provider.externalPlayback?.setVolume) return;
+        await runRequest(provider, 'audio', () => provider.externalPlayback!.setVolume!(volume));
     },
 
     async getExternalPlaybackStatus(song: SongResult): Promise<ProviderExternalPlaybackStatus> {

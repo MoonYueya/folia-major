@@ -18,6 +18,7 @@ import { spotifyMutations } from './spotifyMutations';
 import { resetSpotifyRecommendations, spotifyRecommendations } from './spotifyRecommendations';
 import { describeSpotifyLoginFailure, spotifyLoginFailure } from './spotifyLoginFailure';
 import { describeSpotifyFailure } from './spotifyFailure';
+import { canSteerSpotifyApp, spotifyClientPlayback } from './spotifyClientPlayback';
 
 // src/services/onlineMusic/spotify/spotifyProvider.ts
 // Spotify adapter. Sign-in happens in the browser where the person is already signed in to
@@ -81,6 +82,10 @@ export const spotifyProvider: OnlineMusicProvider = {
         // `playlistSubscription` is albums and other people's playlists (`mutations.canSubscribe`).
         recommendations: true, explore: true, mutations: true, likes: true, playlistTrackMutations: true,
         playlistSubscription: true,
+        // On the Windows desktop app Spotify's songs sound in Spotify's own app, steered from here
+        // (spotifyClientPlayback.ts); elsewhere, and once this run found the app cannot take the
+        // songs (D2), they play through `playback` as before.
+        get externalPlayback() { return canSteerSpotifyApp(); },
     },
     normalizeSong: normalizeSpotifySong, normalizeUser: normalizeSpotifyUser, normalizeCollection: normalizeSpotifyCollection,
     songMetadata: { getSongMetadata: createProviderSongMetadata },
@@ -151,6 +156,7 @@ export const spotifyProvider: OnlineMusicProvider = {
         keepAudio: url => requestSpotify<boolean>('audio_keep', { url, limitBytes: cacheLimitBytes() }),
         hasKeptAudio: url => requestSpotify<boolean>('audio_kept', { url }),
     },
+    externalPlayback: spotifyClientPlayback,
     lyrics: {
         // Spotify's own lyrics are timed by line, or not at all. Untimed ones, and a failure to read
         // them, answer "none" instead of an error, so that the cross-source lookup still runs for the song.

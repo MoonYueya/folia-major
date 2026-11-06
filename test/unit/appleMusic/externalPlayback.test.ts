@@ -15,6 +15,7 @@ const omniMock = vi.hoisted(() => ({
     pauseExternalPlayback: vi.fn(async (_song: unknown) => {}),
     resumeExternalPlayback: vi.fn(async (_song: unknown) => {}),
     seekExternalPlayback: vi.fn(async (_song: unknown, _seconds: number) => {}),
+    setExternalPlaybackVolume: vi.fn(async (_song: unknown, _volume: number) => {}),
     getExternalPlaybackStatus: vi.fn(async (_song: unknown): Promise<ProviderExternalPlaybackStatus> => ({
         mediaId: '123', isPlaying: true, positionMs: 10000, durationMs: 200000, ended: false,
     })),
@@ -42,6 +43,7 @@ const status = (overrides: Partial<ProviderExternalPlaybackStatus> = {}): Provid
 });
 
 const flush = () => vi.advanceTimersByTimeAsync(0);
+const { useAudioSettingsStore } = await import('@/stores/useAudioSettingsStore');
 
 describe('external playback route', () => {
     beforeEach(() => {
@@ -64,6 +66,28 @@ describe('external playback route', () => {
         vi.useRealTimers();
     });
 
+    it('writes one line for a player volume that keeps being refused, and again after it worked (N9)', async () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        omniMock.setExternalPlaybackVolume.mockReset().mockRejectedValue(new Error('Spotify cannot be reached'));
+        await engine.beginExternalPlayback(song, 0);
+        await flush();
+        useAudioSettingsStore.setState({ volume: 0.31 });
+        await flush();
+        useAudioSettingsStore.setState({ volume: 0.32 });
+        await flush();
+        const lines = () => warn.mock.calls.filter(call => String(call[0]).includes('player volume could not be set')).length;
+        expect(lines()).toBe(1);
+
+        // A volume the player took resets it: the next refusal is a new line.
+        omniMock.setExternalPlaybackVolume.mockReset().mockResolvedValueOnce(undefined).mockRejectedValue(new Error('Spotify cannot be reached'));
+        useAudioSettingsStore.setState({ volume: 0.33 });
+        await flush();
+        useAudioSettingsStore.setState({ volume: 0.34 });
+        await flush();
+        expect(lines()).toBe(2);
+        warn.mockRestore();
+    });
+
     it('keeps live broadcasts untimed while playing and ignores timeline seeks', async () => {
         usePlaybackStore.setState({ duration: 200 });
         omniMock.getExternalPlaybackStatus.mockResolvedValue(status({ live: true, positionMs: 0, durationMs: 0 }));
@@ -82,7 +106,7 @@ describe('external playback route', () => {
         const playing = engine.beginExternalPlayback(song, 12);
         await flush();
         await playing;
-        expect(omniMock.playSongExternally).toHaveBeenCalledWith(song, 12);
+        expect(omniMock.playSongExternally).toHaveBeenCalledWith(song, 12, { userAction: true });
         expect(usePlaybackStore.getState().playbackRoute).toBe('external');
         expect(usePlaybackStore.getState().playerState).toBe(PlayerState.IDLE);
         // The old song is still on screen: observers keep what they had until the app shows the new one.

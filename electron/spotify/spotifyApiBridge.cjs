@@ -3,6 +3,7 @@ const { createSpotifyAudio } = require('./audio.cjs');
 const { createSpotifyAudioFiles } = require('./audioFiles.cjs');
 const { SpotifyError, describeError, lineReason, plainWords, spotifyError, statusError, toErrorResult } = require('./errors.cjs');
 const { createSpotifySessionRepository, publicAccountId } = require('./session.cjs');
+const { createSpotifyOfficialClient } = require('./officialClient.cjs');
 const { createSpotifySignIn } = require('./signIn.cjs');
 
 // electron/spotify/spotifyApiBridge.cjs
@@ -16,6 +17,10 @@ const { createSpotifySignIn } = require('./signIn.cjs');
 const SPOTIFY_OPERATIONS = Object.freeze([
   'login_start', 'login_check', 'login_cancel', 'login_open', 'login_status', 'logout', 'query', 'radio', 'lyrics', 'audio', 'audio_kept',
   'audio_keep', 'library', 'playlist_edit', 'playlist_create',
+  // Spotify's own desktop app as the player (officialClient.cjs). `client_probe` answers whether
+  // the app is on this computer at all, without starting anything (D2).
+  'client_launch', 'client_restart', 'client_play', 'client_queue', 'client_pause', 'client_resume', 'client_seek', 'client_volume',
+  'client_status', 'client_probe',
 ]);
 // The queries the renderer may send, each with the hash Spotify knows it by (read 2026-10-08).
 const QUERIES = Object.freeze({
@@ -72,6 +77,9 @@ const REQUEST_LIMIT_MS = 30 * 1000;
 const SHUTDOWN_LIMIT_MS = 3000;
 // The account (its name, and whether it pays) is read again at most this often.
 const ACCOUNT_MAX_AGE_MS = 10 * 60 * 1000;
+// Whether Spotify's app is installed is read again at most this often (D2): it is a look at the
+// launcher on disk, but not one worth taking before every song.
+const AVAILABILITY_TTL_MS = 60 * 1000;
 // After Spotify approved a sign-in, a read of its account that failed on the line is made again
 // with the next poll for this long from the first read; then the sign-in ends.
 const ACCOUNT_RETRY_MS = 60 * 1000;
@@ -88,13 +96,16 @@ const TRACK_ID = /^[0-9A-Za-z]{22}$/;
 // to stay under.
 function createSpotifyApiBridge({
   store, safeStorage, fetch, openExternal, language = () => 'zh-CN', now = Date.now,
-  log = (...args) => console.log(...args), warn = (...args) => console.warn(...args), signIn: givenSignIn, openSession,
+  log = (...args) => console.log(...args), warn = (...args) => console.warn(...args), signIn: givenSignIn, openSession, officialClient: givenOfficialClient,
   audioDirectory, onAudioKept, wait = ms => new Promise(resolve => { setTimeout(resolve, ms); }),
 }) {
   const repo = createSpotifySessionRepository({ store, safeStorage, log, warn });
   const signIn = givenSignIn ?? createSpotifySignIn({ fetch, openExternal, language, now, log, warn });
   let renewing = null;
   let adopting = false;
+  // The failure line last logged: a status read that keeps failing (the app is not running) is
+  // logged once, and a success or a different failure lets it log again.
+  let lastFailure = '';
   // The approved sign-in whose account is being read, and when it was first asked for.
   let approved = null;
   let accountReadAt = 0;
@@ -257,6 +268,14 @@ function createSpotifyApiBridge({
     accessToken: () => accessToken(), deviceId, fetch, now, log, warn, disk: audioFiles, onKept: onAudioKept,
     ...(openSession ? { openSession } : {}),
   });
+
+  // Made on first use: a run that never plays Spotify starts no helper process.
+  let officialClient = givenOfficialClient ?? null;
+  // The last answer of `client_probe`, and when it was read (D2).
+  let availability = null;
+  let availabilityReadAt = 0;
+  // Its own fetch: the Spotify app is on this computer, never behind the partition's proxy.
+  const client = () => (officialClient ??= createSpotifyOfficialClient({ log, warn }));
 
   const handlers = {
     async login_start() {
@@ -440,6 +459,25 @@ function createSpotifyApiBridge({
       return { uri: made.uri };
     },
 
+    // The official app steers: it needs no sign-in of Folia's, only the app on this computer.
+    client_launch: () => client().launch(),
+    client_restart: () => client().restart(),
+    client_play: params => client().play(params),
+    client_queue: params => client().queue(params),
+    client_pause: () => client().pause(),
+    client_resume: () => client().resume(),
+    client_seek: params => client().seek(params),
+    client_volume: params => client().setVolume(params),
+    client_status: () => client().status(),
+    // D2: whether Spotify's app is on this computer. Answered from a cached look at the launcher:
+    // the answer changes when the app is installed or removed, not between two songs.
+    async client_probe() {
+      if (availability && now() - availabilityReadAt < AVAILABILITY_TTL_MS) return availability;
+      availability = client().available();
+      availabilityReadAt = now();
+      return availability;
+    },
+
     // Spotify's own lyrics, timed by line. Without the platform header the service answers 400.
     async lyrics(params) {
       if (typeof params.id !== 'string' || !TRACK_ID.test(params.id)) throw spotifyError('invalid-response', 'Invalid Spotify track');
@@ -468,10 +506,18 @@ function createSpotifyApiBridge({
         return { ok: false, error: { code: 'invalid-response', message: 'Invalid Spotify request' } };
       }
       try {
-        return { ok: true, data: await handlers[operation](params) };
+        const data = await handlers[operation](params);
+        lastFailure = '';
+        return { ok: true, data };
       } catch (error) {
         // The renderer gets a code and a fixed sentence; what Spotify or the network said is kept here.
-        warn(`[Spotify] ${operation}${operation === 'query' ? ` ${String(params.name).slice(0, 40)}` : ''} failed: ${describeError(error)}`);
+        // A status read runs twice a second while the app is not running: the same failure is logged
+        // once, and a different one (or a success, which clears this) logs again.
+        const line = `[Spotify] ${operation}${operation === 'query' ? ` ${String(params.name).slice(0, 40)}` : ''} failed: ${describeError(error)}`;
+        if (line !== lastFailure) {
+          lastFailure = line;
+          warn(line);
+        }
         return toErrorResult(error);
       }
     },
@@ -479,8 +525,36 @@ function createSpotifyApiBridge({
     // once it has come, and the refresh token it replaces may not be taken by the next run.
     // Answers null when there is nothing to wait for. Else the quit is to be held for the promise
     // answered: it resolves once the renewal was stored, or failed, or after SHUTDOWN_LIMIT_MS.
-    shutdown() {
-      return renewing && Promise.race([renewing.answer.then(() => {}, () => {}), wait(SHUTDOWN_LIMIT_MS)]);
+    // `closePlayerOnQuit` is the listener's setting (D3): Folia closes the Spotify it started, or the one
+    // running with the DevTools port Folia opened, as it quits.
+    shutdown({ closePlayerOnQuit = false } = {}) {
+      // The page has to be touched only for a Spotify that is closed with Folia, or for an
+      // advertisement mute still waiting to be given back (L2, N3). Neither: the quit is not held.
+      const playerWaits = Boolean(officialClient) && (closePlayerOnQuit || officialClient.releasePending?.() === true);
+      const closing = (async () => {
+        if (playerWaits && closePlayerOnQuit) {
+          try {
+            await officialClient.closeForQuit();
+          } catch (error) {
+            warn('[Spotify] Spotify could not be closed as Folia quits', error);
+          }
+        }
+        // The media session helper is a child process; it ends with the app, and an advertisement
+        // that muted Spotify has its volume given back first (L2).
+        await officialClient?.close();
+      })();
+      // Nothing of the app's own is open and no renewal is under way: nothing holds the quit.
+      if (!playerWaits) {
+        void closing;
+        if (!renewing) return null;
+      }
+      const renewal = renewing && Promise.race([renewing.answer.then(() => {}, () => {}), wait(SHUTDOWN_LIMIT_MS)]);
+      const worked = renewal ? [closing, renewal] : [closing];
+      // The whole of it is bounded (N3): a taskkill that hangs or a page that stopped answering
+      // ends the quit within SHUTDOWN_LIMIT_MS, and never leaves the quit waiting on a rejection.
+      return Promise.race([Promise.all(worked), wait(SHUTDOWN_LIMIT_MS)]).then(() => undefined, error => {
+        warn('[Spotify] the quit could not be finished cleanly', error);
+      });
     },
   };
 }
