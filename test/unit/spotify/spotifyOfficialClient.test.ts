@@ -937,6 +937,54 @@ describe('M9: a start an advertisement plays before', () => {
         let looks = 0;
         await expect(run([{ item: AD }], () => ++looks < 3)).resolves.toBe('preempted');
     });
+
+    // The wait mutes the advertisement it runs through with the same body an advertisement between
+    // two songs gets (L2): the page's advertisement state and the mute are watched here.
+    const withMute = (states: unknown[], current: () => boolean = () => true) => {
+        const ad = { muted: false, volumeBeforeAd: null as unknown, volumeDuringAd: null as unknown };
+        const mutes: boolean[] = [];
+        const answer = startWait({
+            api: { player: playerShowing(states) }, uri: TRACK_URI, isAd: isAdvertisementItem, current, ad,
+            setAdMute: async (want: boolean) => { mutes.push(want); ad.muted = want; },
+            sleep: () => Promise.resolve(),
+        });
+        return { answer, mutes, ad };
+    };
+
+    it('mutes the advertisement it waits out and gives the volume back when the track comes', async () => {
+        const waited = withMute([{ item: AD }, { item: AD }, { item: { uri: TRACK_URI } }]);
+        await expect(waited.answer).resolves.toBe('loaded');
+        expect(waited.mutes).toEqual([true, false]);
+        expect(waited.ad.muted).toBe(false);
+    });
+
+    it('leaves an advertisement that outlasts the whole wait muted for the status reads', async () => {
+        const waited = withMute([{ item: AD }]);
+        await expect(waited.answer).resolves.toBe('advertisement');
+        // The advertisement is still sounding: the mute stays on, and the status reads follow it.
+        expect(waited.mutes).toEqual([true]);
+        expect(waited.ad.muted).toBe(true);
+    });
+
+    it('does not touch the volume when no advertisement runs', async () => {
+        const waited = withMute([{ item: OTHER }]);
+        await expect(waited.answer).resolves.toBe('not-loaded');
+        expect(waited.mutes).toEqual([]);
+    });
+
+    it('sends a start whose mute the page can read', async () => {
+        FakeSocket.muteSend = true;
+        const app = makeClient({ running: true, portAnswers: true });
+        const playing = expect(app.client.play({ id: TRACK, startMs: 0, userAction: false })).rejects.toMatchObject({ code: 'network' });
+        await vi.advanceTimersByTimeAsync(70000);
+        await playing;
+        const sent = FakeSocket.sockets.flatMap(socket => socket.expressions).find(text => text.includes('window.__foliaPlay')) ?? '';
+        // The wait's mute is the advertisement mute itself, spliced in as the page's code: the call
+        // has to parse, and the mute it carries is the one an advertisement between songs gets (L2).
+        expect(() => new Function(`return ${sent}`)).not.toThrow();
+        expect(sent).toContain('ad.muted = want');
+        expect(sent).toContain('window.__foliaAd');
+    });
 });
 
 describe('L3: a call that may not be made twice', () => {

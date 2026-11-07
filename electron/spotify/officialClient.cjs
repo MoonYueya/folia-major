@@ -170,14 +170,23 @@ const isAdvertisementItem = item => Boolean(item && (
 // advertisement still runs before it: the status reads follow it), 'not-loaded' (the track never came)
 // or 'preempted' (a newer play took the app). A source string because it is the page's code; a test
 // drives it with a stand-in player.
-const START_WAIT_SOURCE = `async ({ api, uri, isAd, current, sleep }) => {
+const START_WAIT_SOURCE = `async ({ api, uri, isAd, current, sleep, ad, setAdMute }) => {
   let waited = 0;
   let total = 0;
   let lastWasAd = false;
+  // The advertisement this wait runs through is muted while it plays, as one between two songs is
+  // (L2): the wait lasts as long as the advertisement does, so it must not be heard louder here. The
+  // volume is given back as soon as the advertisement is over. A page that will not take the mute
+  // leaves the start alone rather than failing it.
+  const muted = async want => {
+    if (typeof setAdMute !== 'function' || !ad || ad.muted === want) return;
+    try { await setAdMute(want); } catch { /* the page may keep its volume */ }
+  };
   while (true) {
     const s = api.player.getState();
-    if (s && s.item && s.item.uri === uri) return 'loaded';
+    if (s && s.item && s.item.uri === uri) { await muted(false); return 'loaded'; }
     lastWasAd = isAd(s && s.item);
+    await muted(lastWasAd);
     total += 100;
     if (!lastWasAd) waited += 100;
     if (waited >= ${START_LIMIT_MS} || total >= ${AD_START_LIMIT_MS}) return lastWasAd ? 'advertisement' : 'not-loaded';
@@ -872,10 +881,13 @@ function createSpotifyOfficialClient({
     // `userAction` says a listener asked for this song; only then may Spotify be started or started
     // again (D1). An advance Folia made by itself passes false: the app it could not reach stays
     // as it is.
+    //
+    // An advertisement the wait runs through is muted while it plays and given its volume back when
+    // it is over (L2): the wait lasts as long as the advertisement does.
     async play({ id, startMs = 0, userAction = true }) {
       const uri = trackUri(id);
       const from = Math.max(0, Math.round(Number(startMs) || 0));
-      return call(`
+      const answer = await call(`
         const uri = ${JSON.stringify(uri)};
         // A newer play makes this one stop after its next wait, before it can seek or change the
         // repeat of the track the listener asked for afterwards (L3).
@@ -887,8 +899,11 @@ function createSpotifyOfficialClient({
         await api.player.play({ uri }, {}, {});
         if (!current()) return 'preempted';
         const waited = await (${START_WAIT_SOURCE})({
-          api, uri, current,
+          api, uri, current, ad,
           isAd: (${isAdvertisementItem.toString()}),
+          // The same mute an advertisement between two songs gets (L2): the wait is long enough to
+          // cover a whole advertisement.
+          setAdMute: async want => { ${adMuteBody('want')} },
           sleep: ms => new Promise(r => setTimeout(r, ms)),
         });
         // The track is moved and adjusted only once it is the one loaded: an advertisement playing
@@ -904,6 +919,12 @@ function createSpotifyOfficialClient({
         if (${from} > 0) await api.player.seekTo(${from});
         return 'loaded';
       `, { allowStart: userAction, retry: false, limitMs: START_CALL_LIMIT_MS });
+      // Only an advertisement that outlasted the whole wait is still muted in the page: the quit gives
+      // that one back (L2). Every other answer saw the advertisement out and gave the volume back
+      // itself, and a play a newer one took over says nothing about the mute: that one owns it now.
+      if (answer === 'advertisement') adMuted = true;
+      else if (answer !== 'preempted') adMuted = false;
+      return answer;
     },
 
     // The songs that are to follow, put in Spotify's queue so it moves on to them by itself. A
