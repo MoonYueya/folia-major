@@ -63,11 +63,15 @@ const TOOL_LIMIT_FLOOR_MS = 100;
 // How long a Spotify port takes to answer when nothing else says so.
 const PORT_VERIFY_LIMIT_MS = 1500;
 // The quit waits for the close at most 3 s in all (spotifyApiBridge's SHUTDOWN_LIMIT_MS). The taskkill
-// has to be under way inside that, so what is asked before it - the tasklist, then the port search -
-// waits only for what is left of this budget, less the little the taskkill itself needs to be handed
-// to Windows (L4): a close that spends the whole gate probing ports closes nothing.
+// has to be under way inside that, so what is asked before it - the tasklist, the port search, then
+// the advertisement's volume given back - waits only for what is left of this budget, less the little
+// the taskkill itself needs to be handed to Windows (L4): a close that spends the whole gate probing
+// ports closes nothing.
 const QUIT_CLOSE_BUDGET_MS = 2400;
 const QUIT_TASK_ISSUE_RESERVE_MS = 250;
+// How long giving an advertisement's volume back may take. The quit's close shortens it to what is
+// left of its own budget, so a page that stopped answering cannot push the taskkill past the gate.
+const AD_MUTE_RELEASE_LIMIT_MS = 1000;
 
 // Runs in the Spotify page: finds the player and the volume API in the app's React tree and keeps
 // them on the window, so later calls do not walk the tree again.
@@ -1090,11 +1094,11 @@ function createSpotifyOfficialClient({
   // An advertisement that muted Spotify is given its volume back: the mute lives in the page and
   // would outlive Folia otherwise (L2). Bounded, because a page that stopped answering must not
   // hold the quit (N3).
-  async function releaseAdMute() {
+  async function releaseAdMute(limitMs = AD_MUTE_RELEASE_LIMIT_MS) {
     if (!adMuted || !page.connected()) return;
     adMuted = false;
     try {
-      await withLimit(page.evaluate(inPage(adMuteBody(false))), 1000, 'Spotify');
+      await withLimit(page.evaluate(inPage(adMuteBody(false))), limitMs, 'Spotify');
     } catch { /* the page may be gone meanwhile */ }
   }
 
@@ -1133,7 +1137,8 @@ function createSpotifyOfficialClient({
         const port = await findPort({ again: true, deadline: issueBy });
         if (!(await spotifyAnswersOnPort(port, waitLimit(PORT_VERIFY_LIMIT_MS, issueBy)))) return false;
       }
-      await releaseAdMute();
+      // The release comes out of that same budget: it waits only for what is left before `issueBy`.
+      await releaseAdMute(waitLimit(AD_MUTE_RELEASE_LIMIT_MS, issueBy));
       page.close();
       await stopSpotify(waitLimit(TOOL_LIMIT_MS, issueBy));
       startedByUs = false;

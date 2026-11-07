@@ -665,6 +665,59 @@ describe('the quit, the helper and the port', () => {
         expect(taskkillTimeout).toBeLessThan(2000);
     });
 
+    it('counts giving the advertisement mute back inside the quit gate too', async () => {
+        const page = adPlaying();
+        const listeners = '  TCP    127.0.0.1:9283    0.0.0.0:0    LISTENING    1234';
+        const app = makeClient({ port: 0, netstat: listeners });
+        let slowNetstat = false;
+        let probeDelay = 0;
+        let startedAt = 0;
+        let taskkillAt = 0;
+        app.runFile.mockImplementation((file: string, _args: string[], _options: object, callback: (error: Error | null, stdout?: string) => void) => {
+            if (String(file).includes('netstat')) {
+                // 一个慢的 netstat：在自己时限之内答，但已经花掉了闸门的大半预算。
+                if (!slowNetstat) { callback(null, listeners); return; }
+                setTimeout(() => callback(null, listeners), 1990);
+                return;
+            }
+            if (String(file).includes('taskkill')) {
+                taskkillAt = Date.now() - startedAt;
+                callback(null, '');
+                return;
+            }
+            callback(null, 'INFO: No tasks are running');
+        });
+        const version = { ok: true, json: async () => ({ 'User-Agent': 'Mozilla/5.0 Spotify/1.2.31' }) };
+        app.fetch.mockImplementation(((url: string) => {
+            if (!String(url).includes('/json/version')) {
+                return Promise.resolve({ ok: true, json: async () => [{ type: 'page', url: 'https://xpui.app.spotify.com/', webSocketDebuggerUrl: 'ws://127.0.0.1:9283/devtools/page/1' }] });
+            }
+            if (probeDelay > 0) {
+                const waitMs = probeDelay;
+                probeDelay = 0;
+                return new Promise(resolve => setTimeout(() => resolve(version), waitMs));
+            }
+            return Promise.resolve(version);
+        }) as never);
+        // The port is found and the page reports an advertisement it muted.
+        await expect(app.client.play({ id: TRACK, startMs: 0 })).resolves.toBe('loaded');
+        expect((await app.client.status()).ad).toBe(true);
+        expect(app.client.releasePending()).toBe(true);
+        expect(page.muted).toBe(true);
+
+        // The page stops answering, and the port check before the kill spends most of the budget.
+        FakeSocket.muteSend = true;
+        probeDelay = 150;
+        slowNetstat = true;
+        startedAt = Date.now();
+        const quit = app.client.closeForQuit();
+        await vi.advanceTimersByTimeAsync(4000);
+        await expect(quit).resolves.toBe(true);
+        // 释放广告静音的那一段时间也是闸门的，不是它之外的：taskkill 仍在 3s 之内发出。
+        expect(app.taskkills()).toBe(1);
+        expect(taskkillAt).toBeLessThan(3000);
+    });
+
     it('gives up a port it cannot confirm inside the gate instead of holding the quit for it (L4)', async () => {
         const app = makeClient({ port: 0, portAnswers: true });
         const startedAt = Date.now();
