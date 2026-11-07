@@ -83,6 +83,7 @@ const { YTM_AUDIO_PRIVILEGED_SCHEME, YTM_AUDIO_SCHEME } = require('./ytm/audio.c
 const { createSpotifyApiBridge } = require('./spotify/spotifyApiBridge.cjs');
 const { createMediaKeyTakeover } = require('./mediaKeys.cjs');
 const { createQuitShutdownGate } = require('./quitShutdown.cjs');
+const { CLOSE_PLAYER_ON_QUIT_SETTING_KEY, createClosePlayerOnQuitSetting } = require('./closePlayerOnQuitSetting.cjs');
 const { SPOTIFY_AUDIO_PRIVILEGED_SCHEME, SPOTIFY_AUDIO_SCHEME } = require('./spotify/audio.cjs');
 const { createQqAuthSessionRepository } = require('./qq/qqAuthSessionRepository.cjs');
 const { DEFAULT_DISCORD_APPLICATION_ID, createDiscordPresenceController } = require('./discordPresence.cjs');
@@ -6416,7 +6417,10 @@ app.on('window-all-closed', () => {
 // with stops answering (D3). Written by the renderer through `save-settings`, read here at the quit.
 // The renderer's own key for this switch (useDesktopSettingsStore.ts) is a different, already
 // published name; only this shared store's key is the upper-case one every other switch here uses.
-const CLOSE_EXTERNAL_PLAYER_ON_QUIT_SETTING_KEY = 'CLOSE_EXTERNAL_PLAYER_ON_QUIT';
+// This fork shipped the switch under its older lower-case name, so the reader carries such a value
+// over to this key (closePlayerOnQuitSetting.cjs); the renderer writes the upper-case one from now on.
+const CLOSE_EXTERNAL_PLAYER_ON_QUIT_SETTING_KEY = CLOSE_PLAYER_ON_QUIT_SETTING_KEY;
+const closePlayerOnQuitSetting = createClosePlayerOnQuitSetting(store);
 
 // The bridges whose work under way holds a quit, each through its shutdown() (see before-quit).
 const quitHoldingBridges = [ytmApiBridge, spotifyApiBridge];
@@ -6440,7 +6444,7 @@ app.on('before-quit', (event) => {
   // Every bridge is asked the same way: the one that does not know the option ignores it.
   let held = [];
   if (quitShutdownGate.asks({ holding: isQuitHeldForAccounts })) {
-    const closePlayerOnQuit = store.get(CLOSE_EXTERNAL_PLAYER_ON_QUIT_SETTING_KEY) === true;
+    const closePlayerOnQuit = closePlayerOnQuitSetting();
     held = quitHoldingBridges.map(bridge => bridge.shutdown({ closePlayerOnQuit })).filter(Boolean);
   }
   if (held.length > 0 && !isQuitHeldForAccounts) {
