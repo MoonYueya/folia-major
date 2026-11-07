@@ -122,8 +122,8 @@ const FORGET_APIS = `(() => {
 })()`;
 
 // Whether an advertisement is muted is kept on the page, apart from the player and the volume API,
-// which are forgotten when Spotify's UI changes (M2): a mute that is on stays on across that
-// (L2), and Folia still knows of it when it quits.
+// which are forgotten when Spotify's UI changes: a mute that is on stays on across that, and Folia
+// still knows of it when it quits.
 const AD_STATE = `window.__foliaAd || (window.__foliaAd = { muted: false, volumeBeforeAd: null, volumeDuringAd: null });`;
 
 // The body of one call in the page, with the APIs as `api` and the advertisement state as `ad`.
@@ -145,8 +145,8 @@ const STATE_BODY = `
 // An advertisement is muted for as long as it plays (a free account cannot skip one), and the
 // volume is given back when it is over. Whether it is muted is kept in the page, across Folia runs.
 // The volume heard before the advertisement is written once, when the mute begins: a second mute
-// asked for while the advertisement plays must not record the 0 it set (L2). A volume the listener
-// chooses during the advertisement is kept apart and is the one given back (L2).
+// asked for while the advertisement plays must not record the 0 it set. A volume the listener
+// chooses during the advertisement is kept apart and is the one given back.
 const adMuteBody = muted => `
   const muter = typeof api.playback.getMuteHelper === 'function' ? api.playback.getMuteHelper() : null;
   if (${muted}) {
@@ -193,8 +193,8 @@ const START_WAIT_SOURCE = `async ({ api, uri, isAd, current, sleep, ad, setAdMut
   let waited = 0;
   let total = 0;
   let lastWasAd = false;
-  // The advertisement this wait runs through is muted while it plays, as one between two songs is
-  // (L2): the wait lasts as long as the advertisement does, so it must not be heard louder here. The
+  // The advertisement this wait runs through is muted while it plays, as one between two songs is:
+  // the wait lasts as long as the advertisement does, so it must not be heard louder here. The
   // volume is given back as soon as the advertisement is over. A page that will not take the mute
   // leaves the start alone rather than failing it.
   const muted = async want => {
@@ -859,7 +859,7 @@ function createSpotifyOfficialClient({
   // Whether this run of Folia started Spotify: the app is closed with Folia only when it did, or
   // when the DevTools port Folia opened it with still answers.
   let startedByUs = false;
-  // Whether an advertisement is muted in the page right now, as its own answers said (L2).
+  // Whether an advertisement is muted in the page right now, as its own answers said.
   let adMuted = false;
 
   // Both tools are bounded: a taskkill that hangs must not hold the quit.
@@ -1090,8 +1090,8 @@ function createSpotifyOfficialClient({
   }
 
   // An advertisement that muted Spotify is given its volume back: the mute lives in the page and
-  // would outlive Folia otherwise (L2). Bounded, because a page that stopped answering must not
-  // hold the quit (N3).
+  // would outlive Folia otherwise. Bounded, because a page that stopped answering must not hold the
+  // quit.
   async function releaseAdMute(limitMs = AD_MUTE_RELEASE_LIMIT_MS) {
     if (!adMuted || !page.connected()) return;
     adMuted = false;
@@ -1122,8 +1122,8 @@ function createSpotifyOfficialClient({
     // run started it, or when it runs with the DevTools port Folia opened it with; a Spotify the
     // listener started without the port is left alone, and so is a port another program holds.
     //
-    // An advertisement that muted Spotify has its volume given back before the app is closed (L2):
-    // the mute lives in the page, and a page killed with it keeps Spotify silent for good.
+    // An advertisement that muted Spotify has its volume given back before the app is closed: the
+    // mute lives in the page, and a page killed with it keeps Spotify silent for good.
     async closeForQuit() {
       if (platform !== 'win32') return false;
       // The instant the taskkill has to be under way by; what is left of the budget is all the
@@ -1144,7 +1144,7 @@ function createSpotifyOfficialClient({
       return true;
     },
 
-    // Whether quitting has something to wait for in the page: an advertisement mute still on (L2).
+    // Whether quitting has something to wait for in the page: an advertisement mute still on.
     releasePending: () => Boolean(page.connected() && adMuted),
 
     // Plays one track from `startMs` with Spotify's own repeat and shuffle off: the order is Folia's.
@@ -1159,7 +1159,7 @@ function createSpotifyOfficialClient({
     // as it is.
     //
     // An advertisement the wait runs through is muted while it plays and given its volume back when
-    // it is over (L2): the wait lasts as long as the advertisement does.
+    // it is over: the wait lasts as long as the advertisement does.
     async play({ id, startMs = 0, userAction = true }) {
       const uri = trackUri(id);
       const from = Math.max(0, Math.round(Number(startMs) || 0));
@@ -1177,8 +1177,8 @@ function createSpotifyOfficialClient({
         const waited = await (${START_WAIT_SOURCE})({
           api, uri, current, ad,
           isAd: (${isAdvertisementItem.toString()}),
-          // The same mute an advertisement between two songs gets (L2): the wait is long enough to
-          // cover a whole advertisement.
+          // The same mute an advertisement between two songs gets: the wait is long enough to cover
+          // a whole advertisement.
           setAdMute: async want => { ${adMuteBody('want')} },
           sleep: ms => new Promise(r => setTimeout(r, ms)),
         });
@@ -1196,8 +1196,8 @@ function createSpotifyOfficialClient({
         return 'loaded';
       `, { allowStart: userAction, retry: false, limitMs: START_CALL_LIMIT_MS });
       // Only an advertisement that outlasted the whole wait is still muted in the page: the quit gives
-      // that one back (L2). Every other answer saw the advertisement out and gave the volume back
-      // itself, and a play a newer one took over says nothing about the mute: that one owns it now.
+      // that one back. Every other answer saw the advertisement out and gave the volume back itself,
+      // and a play a newer one took over says nothing about the mute: that one owns it now.
       if (answer === 'advertisement') adMuted = true;
       else if (answer !== 'preempted') adMuted = false;
       return answer;
@@ -1226,8 +1226,8 @@ function createSpotifyOfficialClient({
       return orMediaSession(`await api.player.seekTo(${target}); return true;`, 'seek', { ms: target });
     },
 
-    // The listener's own volume; a volume chosen while an advertisement plays is the one given
-    // back when it is over (L2).
+    // The listener's own volume; a volume chosen while an advertisement plays is the one given back
+    // when it is over.
     setVolume({ value }) {
       const volume = Math.min(1, Math.max(0, Number(value)));
       if (!Number.isFinite(volume)) throw spotifyError('invalid-response', 'Invalid volume');
@@ -1272,8 +1272,8 @@ function createSpotifyOfficialClient({
       return status;
     },
 
-    // The app is quitting. An advertisement that muted Spotify has its volume given back first:
-    // the mute is kept in the page and would outlive Folia otherwise (L2).
+    // The app is quitting. An advertisement that muted Spotify has its volume given back first: the
+    // mute is kept in the page and would outlive Folia otherwise.
     async close() {
       // Only a mute this run set has anything to give back: a connection that was never made has
       // nothing, and waiting on a page that is not there would hold the quit.

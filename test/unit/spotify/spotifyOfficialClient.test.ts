@@ -413,7 +413,7 @@ describe('the DevTools connection', () => {
     });
 });
 
-describe('L2: the advertisement mute', () => {
+describe('the advertisement mute', () => {
     it('switches the mute on for an advertisement and off again after it', async () => {
         let advertisement: unknown = { item: { uri: 'spotify:ad:1', metadata: { is_advertisement: 'true' } }, isPaused: false, isBuffering: false, duration: 30000, adMuted: false };
         handle = expression => (expression.includes('positionAsOfTimestamp') ? { value: advertisement } : { value: true });
@@ -433,7 +433,7 @@ describe('L2: the advertisement mute', () => {
         await app.client.close();
     });
 
-    it('keeps the mute state apart from the player the page forgets (N5)', async () => {
+    it('keeps the mute state apart from the player the page forgets', async () => {
         let seen = 0;
         handle = expression => {
             if (expression.includes('delete window.__foliaSpotify')) return { value: true };
@@ -541,7 +541,7 @@ describe('the quit, the helper and the port', () => {
         return page;
     };
 
-    it('gives the advertisement mute back before it closes Spotify (N2)', async () => {
+    it('gives the advertisement mute back before it closes Spotify', async () => {
         const page = adPlaying();
         const app = makeClient({ portAnswers: true });
         const order: string[] = [];
@@ -556,7 +556,7 @@ describe('the quit, the helper and the port', () => {
         });
         expect((await app.client.status()).ad).toBe(true);
         expect(page.muted).toBe(true);
-        // Quitting has something to wait for only while the mute is still on (N3).
+        // Quitting has something to wait for only while the mute is still on.
         expect(app.client.releasePending()).toBe(true);
 
         await expect(app.client.closeForQuit()).resolves.toBe(true);
@@ -1077,7 +1077,7 @@ describe('a start an advertisement plays before', () => {
     });
 
     // The wait mutes the advertisement it runs through with the same body an advertisement between
-    // two songs gets (L2): the page's advertisement state and the mute are watched here.
+    // two songs gets: the page's advertisement state and the mute are watched here.
     const withMute = (states: unknown[], current: () => boolean = () => true) => {
         const ad = { muted: false, volumeBeforeAd: null as unknown, volumeDuringAd: null as unknown };
         const mutes: boolean[] = [];
@@ -1118,7 +1118,7 @@ describe('a start an advertisement plays before', () => {
         await playing;
         const sent = FakeSocket.sockets.flatMap(socket => socket.expressions).find(text => text.includes('window.__foliaPlay')) ?? '';
         // The wait's mute is the advertisement mute itself, spliced in as the page's code: the call
-        // has to parse, and the mute it carries is the one an advertisement between songs gets (L2).
+        // has to parse, and the mute it carries is the one an advertisement between songs gets.
         expect(() => new Function(`return ${sent}`)).not.toThrow();
         expect(sent).toContain('ad.muted = want');
         expect(sent).toContain('window.__foliaAd');
