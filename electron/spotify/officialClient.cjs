@@ -31,6 +31,11 @@ const STORE_PACKAGE_DIR = 'SpotifyAB.SpotifyMusic_zpdnekdrzrea0';
 const PORT_SCAN_BACKOFF_MS = Object.freeze([1000, 5000, 30000]);
 // How many loopback listeners one search probes, and how long each probe may take.
 const MAX_PORT_CANDIDATES = 32;
+// The searches a session restore may make for the port in one run, and how far apart they are: a
+// fresh run's first look can come before the app has opened its port (a listener who starts Folia and
+// Spotify together), so one more look is worth making a few seconds later.
+const STATUS_PORT_SEARCHES = 2;
+const STATUS_PORT_SEARCH_GAP_MS = 3000;
 const PORT_PROBE_LIMIT_MS = 600;
 const LAUNCH_WAIT_MS = 25000;
 // How long a play waits for its track: the time the track itself makes no progress (a free account's
@@ -772,6 +777,10 @@ function createSpotifyOfficialClient({
   let foundPort = null;
   let nextScanAt = 0;
   let scanFailures = 0;
+  // How many of the searches a session restore may make have been made in this run, and when the last
+  // one started.
+  let statusPortSearches = 0;
+  let statusPortSearchedAt = 0;
 
   // Whether the program answering on `candidate` is Spotify: another program that happens to hold a
   // port is not Folia's, and Spotify must not be closed for it.
@@ -848,6 +857,9 @@ function createSpotifyOfficialClient({
   // Whether a DevTools port answers for Spotify now, which is what decides whether Spotify has to be
   // started: the port is asked, not merely named.
   const debugPortAnswers = async () => spotifyAnswersOnPort(await findPort({ again: true }));
+
+  // Whether Spotify's app is on this computer at all: the launcher on disk, and nothing else.
+  const spotifyInstalled = () => platform === 'win32' && Boolean(findLauncher(env));
 
   const page = createPageConnection({ fetch, portOf: () => findPort() });
   const mediaSession = platform === 'win32' ? createMediaSession({ spawnProcess, warn, shellPath: systemTool('WindowsPowerShell\\v1.0\\powershell.exe') }) : null;
@@ -1100,6 +1112,39 @@ function createSpotifyOfficialClient({
     } catch { /* the page may be gone meanwhile */ }
   }
 
+  // The player's state as a status read answers it, once, from wherever it can still be had.
+  // An advertisement is muted while it plays and given its volume back when it is over: the mute
+  // lives in the page and would outlive Folia otherwise.
+  const readStatus = async () => {
+    let state;
+    try {
+      if (!requestedPort && !foundPort) {
+        throw spotifyError('unavailable', 'Spotify has no DevTools port Folia has found', 'a status read does not look for one');
+      }
+      state = await evaluateInPage(STATE_BODY);
+    } catch (error) {
+      if (error?.code === 'invalid-response') throw error;
+      page.close();
+      if (!mediaSession) throw error;
+      return statusFromMediaSession(await mediaSession.ask('status'));
+    }
+    const status = statusFromPlayerState(state, Date.now());
+    const wasMuted = Boolean(state?.adMuted);
+    if (status.ad !== wasMuted) {
+      try {
+        await page.evaluate(inPage(adMuteBody(status.ad)));
+        log(status.ad ? '[SpotifyClient] an advertisement plays; it is muted' : '[SpotifyClient] the advertisement is over; the volume is given back');
+        adMuted = status.ad;
+      } catch (error) {
+        warn('[SpotifyClient] the advertisement mute could not be changed', error);
+        adMuted = wasMuted;
+      }
+    } else {
+      adMuted = wasMuted;
+    }
+    return status;
+  };
+
   return {
     // Asked by the launch switch (or at app start): tries again even within the cool-down, and
     // may close and start Spotify once, as the listener asked for it.
@@ -1115,7 +1160,7 @@ function createSpotifyOfficialClient({
     // is looked for on disk and nothing else. The caller caches the answer.
     available() {
       if (platform !== 'win32') return { available: false, reason: 'unsupported' };
-      return findLauncher(env) ? { available: true } : { available: false, reason: 'not-installed' };
+      return spotifyInstalled() ? { available: true } : { available: false, reason: 'not-installed' };
     },
 
     // Folia quits and the listener asked for Spotify to be closed with it. Closed when this
@@ -1135,12 +1180,13 @@ function createSpotifyOfficialClient({
         const port = await findPort({ again: true, deadline: issueBy });
         if (!(await spotifyAnswersOnPort(port, waitLimit(PORT_VERIFY_LIMIT_MS, issueBy)))) return false;
       }
+      const closedBecause = startedByUs ? 'this run started it' : 'its DevTools port answers';
       // The release comes out of that same budget: it waits only for what is left before `issueBy`.
       await releaseAdMute(waitLimit(AD_MUTE_RELEASE_LIMIT_MS, issueBy));
       page.close();
       await stopSpotify(waitLimit(TOOL_LIMIT_MS, issueBy));
       startedByUs = false;
-      log('[SpotifyClient] Spotify was closed as Folia quits');
+      log('[SpotifyClient] Spotify was closed as Folia quits: ' + closedBecause);
       return true;
     },
 
@@ -1242,34 +1288,30 @@ function createSpotifyOfficialClient({
     // when the page cannot be reached. A status read never starts or closes Spotify, and it
     // never looks for the DevTools port either: it is polled while a song plays, so it takes the port
     // Folia already found (or the one it named) and answers from the media session meanwhile.
-    async status() {
-      let state;
-      try {
-        if (!requestedPort && !foundPort) {
-          throw spotifyError('unavailable', 'Spotify has no DevTools port Folia has found', 'a status read does not look for one');
-        }
-        state = await evaluateInPage(STATE_BODY);
-      } catch (error) {
-        if (error?.code === 'invalid-response') throw error;
-        page.close();
-        if (!mediaSession) throw error;
-        return statusFromMediaSession(await mediaSession.ask('status'));
+    status: readStatus,
+
+    // The same state for a session restore, with a search for the DevTools port first: a Spotify the
+    // listener left running is named by the track it is on only once the port it listens on is known,
+    // and a fresh run has found none. The search reads the app's port file and asks the machine's
+    // loopback ports; it starts, closes and pauses nothing. A run makes at most two of them, at least
+    // STATUS_PORT_SEARCH_GAP_MS apart, and none at all where the port is already known, where Spotify's
+    // app is not installed, or where the caller named the port itself - so what follows cannot turn
+    // into a search per poll. Where no search finds a port the answer is the media session's, as any
+    // status read's is.
+    async statusWithPortSearch() {
+      const searching = !requestedPort && !foundPort
+        && statusPortSearches < STATUS_PORT_SEARCHES
+        && Date.now() - statusPortSearchedAt >= STATUS_PORT_SEARCH_GAP_MS
+        && spotifyInstalled();
+      if (searching) {
+        statusPortSearches += 1;
+        statusPortSearchedAt = Date.now();
+        const port = await findPort({ again: true });
+        const which = 'search ' + statusPortSearches + ' of ' + STATUS_PORT_SEARCHES;
+        if (port) log('[SpotifyClient] the DevTools port of Spotify is ' + port + ' (' + which + ')');
+        else log('[SpotifyClient] this status read found no DevTools port for Spotify (' + which + ')');
       }
-      const status = statusFromPlayerState(state, Date.now());
-      const wasMuted = Boolean(state?.adMuted);
-      if (status.ad !== wasMuted) {
-        try {
-          await page.evaluate(inPage(adMuteBody(status.ad)));
-          log(status.ad ? '[SpotifyClient] an advertisement plays; it is muted' : '[SpotifyClient] the advertisement is over; the volume is given back');
-          adMuted = status.ad;
-        } catch (error) {
-          warn('[SpotifyClient] the advertisement mute could not be changed', error);
-          adMuted = wasMuted;
-        }
-      } else {
-        adMuted = wasMuted;
-      }
-      return status;
+      return readStatus();
     },
 
     // The app is quitting. An advertisement that muted Spotify has its volume given back first: the
