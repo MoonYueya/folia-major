@@ -2578,9 +2578,8 @@ let mainWindowClickThroughUnlockHover = false;
 let mainWindowClickThroughUnlockHoverTimer = null;
 let mainWindowSkipTaskbarEnabled = false;
 let videoExportWindowRestoreState = null;
-// The renderer's arm for the machine's own sound (external playback's spectrum, see
-// setupDisplayMediaRequestHandler). It buys one getDisplayMedia call, lapses if that call never
-// comes, and anything that ends or replaces the page clears it.
+// The renderer's arm for the machine's own sound, for the external playback route's spectrum
+// (createSpectrumArm says what it guarantees).
 const externalSpectrumArm = createSpectrumArm({
   onLapse: () => console.info('[ExternalSpectrum] The arm for the machine\'s sound lapsed unspent'),
 });
@@ -5751,11 +5750,10 @@ function setupDisplayMediaRequestHandler() {
     });
 
     if (route === DISPLAY_MEDIA_ROUTE_SPECTRUM) {
-      // The arm buys one call and is spent here: a renderer that reloaded between arming and asking
-      // cannot leave the handler answering the machine's sound to some later request of its own.
+      // The arm buys one call: spending it here keeps a later request of the same renderer from
+      // being answered with the machine's sound.
       externalSpectrumArm.spend();
-      // The window has to stay live for the capture, even out of sight: a throttled page stops
-      // reading its analyser, and the bars would freeze with the song still playing.
+      // The window must stay live for the capture, even out of sight (backgroundThrottling.cjs).
       externalSpectrumCaptureActive = true;
       backgroundThrottling.refresh();
       console.log('[ExternalSpectrum] Granting system-sound capture to the main window');
@@ -5911,8 +5909,7 @@ function createWindow(options = {}) {
   win.webContents.on('render-process-gone', (_event, details) => {
     // Whatever ended it, the page that may have been stuck is gone.
     noteWindowNotStuck(win);
-    // The page that held the capture is gone too, and the arm it left behind must not answer the
-    // next request the reloaded page makes on its own.
+    // The page that held the capture is gone too.
     if (win === mainWindow) forgetExternalSpectrumCapture();
     if (win.__reopeningWithoutMods) {
       // Ended on purpose by offerReopenWithoutMods, which loads the page again itself.
@@ -6494,7 +6491,7 @@ app.on('window-all-closed', () => {
 });
 
 // Windows desktop only: close the external player with Folia, so the DevTools port Folia opened it
-// with stops answering (D3). Written by the renderer through `save-settings`, read here at the quit.
+// with stops answering. Written by the renderer through `save-settings`, read here at the quit.
 // The renderer's own key for this switch (useDesktopSettingsStore.ts) is a different, already
 // published name; only this shared store's key is the upper-case one every other switch here uses.
 // This fork shipped the switch under its older lower-case name, so the reader carries such a value
@@ -6506,9 +6503,7 @@ const closePlayerOnQuitSetting = createClosePlayerOnQuitSetting(store);
 const quitHoldingBridges = [ytmApiBridge, spotifyApiBridge];
 // Set while a quit is held for such work (see before-quit).
 let isQuitHeldForAccounts = false;
-// Which quit asks the bridges to shut down. The quit asked again after their work held it is the same
-// quit and must not ask them twice (the player outside Folia is closed once, not on every one); a quit
-// that was cancelled halfway leaves nothing behind, so the next one asks again (quitShutdown.cjs).
+// Which quit asks the bridges to shut down; the rules are in electron/quitShutdown.cjs.
 const quitShutdownGate = createQuitShutdownGate();
 
 app.on('before-quit', (event) => {
@@ -6518,10 +6513,9 @@ app.on('before-quit', (event) => {
   // while there is such work, settled in 3 seconds at most. The quit is held until all have
   // settled, and then asked for again; nothing below has run by then. A quit with no such work is
   // not held, and neither is one that arrives while another is held.
-  // D3: the listener's settings row, read from the shared store the renderer writes through
-  // `save-settings`. The player is closed with Folia only when this run started it, or when it
-  // still answers on the DevTools port Folia opened it with.
-  // Every bridge is asked the same way: the one that does not know the option ignores it.
+  // The listener's settings row, read from the shared store the renderer writes through
+  // `save-settings`. Every bridge is asked the same way: the one that does not know the option
+  // ignores it.
   let held = [];
   if (quitShutdownGate.asks({ holding: isQuitHeldForAccounts })) {
     const closePlayerOnQuit = closePlayerOnQuitSetting();
