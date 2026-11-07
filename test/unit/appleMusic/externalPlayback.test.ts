@@ -872,4 +872,19 @@ describe('an advertisement of the external player', () => {
         await vi.advanceTimersByTimeAsync(2000);
         expect(engine.getExternalPosition()).toBe(held);
     });
+
+    it('reads the advertisement still playing on a player a new window took over', async () => {
+        // The window was rebuilt while an advertisement of the old one played: the new session
+        // starts with no advertisement, and the first answer is what says one is on.
+        omniMock.getExternalPlaybackStatus.mockResolvedValue(status({ positionMs: 20000 }));
+        expect(await engine.adoptExternalPlayback(song)).toBe(true);
+        expect(engine.isExternalAdvertisement()).toBe(false);
+
+        omniMock.getExternalPlaybackStatus.mockResolvedValue(advertisement());
+        await vi.advanceTimersByTimeAsync(600);
+        expect(engine.isExternalAdvertisement()).toBe(true);
+        expect(events).toContain('advertisement:true');
+        expect(events).not.toContain('ended');
+        expect(engine.getExternalSong()).toBe(song);
+    });
 });
