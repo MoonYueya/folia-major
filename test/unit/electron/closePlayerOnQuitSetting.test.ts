@@ -56,7 +56,7 @@ describe('reading the switch at the quit', () => {
         expect(values.get('CLOSE_EXTERNAL_PLAYER_ON_QUIT')).toBe(true);
         expect(log).toHaveBeenCalledTimes(1);
         expect(String(log.mock.calls[0][0])).toContain('CLOSE_EXTERNAL_PLAYER_ON_QUIT');
-        // 旧键留着：迁移只读它，不改名也不删。
+        // The old key stays: the migration only reads it, never renames or deletes it.
         expect(values.get('close_external_player_on_quit')).toBe(true);
     });
 
