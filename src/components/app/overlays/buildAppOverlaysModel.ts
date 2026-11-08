@@ -7,10 +7,10 @@ import type MemoryMonitorWindow from '../../debug/MemoryMonitorWindow';
 import type NowPlayingToast from './NowPlayingToast';
 import { PlayerState } from '../../../types';
 import type { SongResult, UnifiedSong, LyricData, StageLoopMode } from '../../../types';
-import { resolvePlaybackNeighbors } from '../../../utils/playbackNeighbors';
+import { resolvePlaybackNeighbors, type ShuffleOrderView } from '../../../utils/playbackNeighbors';
 import { getPlaybackSongKey } from '../../../utils/appPlaybackGuards';
 import { getSongArtistLabel } from '../../../services/onlineMusic/songMetadata';
-import { readShuffleRound, setPlayerState } from '../../../stores/usePlaybackStore';
+import { setPlayerState } from '../../../stores/usePlaybackStore';
 import { locatePlayingSongOnWall } from '../lattice/wallLocate';
 import { setIsDevDebugOverlayVisible, setIsMemoryMonitorVisible } from '../../../stores/useAppChromeStore';
 import type { SlotContextFromApp } from '../../FloatingPlayerControls';
@@ -55,6 +55,8 @@ type AppOverlaysAmbient = {
     noTrackText: string;
     playQueue: SongResult[];
     isFmMode: boolean;
+    /** This round of shuffle, subscribed by the caller: the neighbours resolve from the order and its history. */
+    shuffleRound: ShuffleOrderView | null;
     prevTrackLabel: string;
     nextTrackLabel: string;
     /**
@@ -171,6 +173,7 @@ export const buildAppOverlaysModel = ({
     noTrackText,
     playQueue,
     isFmMode,
+    shuffleRound,
     isNowPlayingStageActive,
     handlePrevTrack,
     handleNextTrack,
@@ -311,7 +314,7 @@ export const buildAppOverlaysModel = ({
                     loopMode: effectiveLoopMode,
                     isFmMode,
                     isStageActive: isNowPlayingStageActive,
-                    shuffleRound: readShuffleRound(),
+                    shuffleRound,
                 });
 
                 return {

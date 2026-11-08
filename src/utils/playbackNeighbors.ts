@@ -363,7 +363,9 @@ export const stepShuffleRound = (
         : round;
     const index = nextPlayableShuffleIndexWithinRound(queue, next.order, currentIndex, isPlayable);
     if (index < 0) return { round: next, index: -1 };
-    return { round: { ...next, history: pushHistory(next.history, historyEntry(queue, index)) }, index };
+    // 历史没变就把那一轮原样递回去，主人因此分得清「什么都没变」和「真走了一步」。
+    const history = pushHistory(next.history, historyEntry(queue, index));
+    return { round: history === next.history ? next : { ...next, history }, index };
 };
 
 /**
@@ -393,7 +395,7 @@ const shuffleBackIndex = (
  * 有历史时只由历史回答；完全没有历史（调用方只递了一份排列过来）时退回按排列位置算，
  * 因为那时手上只有这个。
  */
-export const prevShuffleQueueIndex = (
+export const prevShuffleIndexFromRound = (
     queue: SongResult[],
     order: readonly number[],
     history: readonly ShuffleHistoryEntry[],
@@ -417,13 +419,13 @@ export const stepBackShuffleRound = (
 ): ShuffleStep => {
     const round = syncShuffleRound(state, queue, currentSong, random);
     const currentIndex = shuffleCurrentQueueIndex(queue, currentSong, round.history);
-    const index = prevShuffleQueueIndex(queue, round.order, round.history, currentIndex);
+    const index = prevShuffleIndexFromRound(queue, round.order, round.history, currentIndex);
     if (index < 0) return { round, index };
     const currentKey = queue[currentIndex] ? getPlaybackSongKey(queue[currentIndex]) : null;
     const history = currentKey !== null && round.history[round.history.length - 1]?.key === currentKey
         ? round.history.slice(0, -1)
         : round.history;
-    return { round: { ...round, history }, index };
+    return { round: history === round.history ? round : { ...round, history }, index };
 };
 
 // ---- 过渡要混进去的那一首 ----
@@ -433,6 +435,7 @@ export type TransitionTargetReason =
     | 'ok'
     | 'queue-end'
     | 'shuffle-order-unknown'
+    | 'shuffle-current-not-in-order'
     | 'shuffle-round-end'
     | 'fm-next-unfetched'
     | 'replay-current';
@@ -448,7 +451,8 @@ export type TransitionTarget = {
  * 私人 FM 的最后一首没有：下一首要现拉，还叫不出名字的曲目没法提前测量，FM 的队列也不绕回队首。
  * 这里不去拉。下一首和当前曲目是同一首歌（队列里排了两次）时也没有：那是重播，不是过渡。
  * 随机按这一轮的排列回答 —— 队列里的下一首是一首不会播的歌。没有排列时如实说没有排列
- * （shuffle-order-unknown），不报一个根本不存在的队列到头。
+ * （shuffle-order-unknown），有排列但排列里没有这一首时说的是另一回事（shuffle-current-not-in-order），
+ * 两者都不报一个根本不存在的队列到头。
  */
 export const resolveTransitionTarget = (
     queue: SongResult[],
@@ -466,7 +470,8 @@ export const resolveTransitionTarget = (
         // 排了两次时历史知道此刻是哪一���副本；没有历史时按前一个副本算。
         const currentIndex = shuffleCurrentQueueIndex(queue, currentSong, shuffleRound?.history ?? []);
         const position = order.indexOf(currentIndex);
-        if (position < 0) return { song: null, reason: 'shuffle-order-unknown' };
+        // 有排列、只是排列里没有这一首 —— 这和「没有排列」是两回事，排查时指向的方向也不同。
+        if (position < 0) return { song: null, reason: 'shuffle-current-not-in-order' };
         if (position >= order.length - 1) return { song: null, reason: 'shuffle-round-end' };
         const upcoming = queue[order[position + 1]] ?? null;
         return upcoming && getPlaybackSongKey(upcoming) !== currentKey
@@ -590,7 +595,7 @@ export const resolvePlaybackNeighbors = ({
         const history = shuffleRound?.history ?? [];
         const currentIndex = shuffleCurrentQueueIndex(playQueue, currentSong, history);
         const position = order.indexOf(currentIndex);
-        const prevIndex = prevShuffleQueueIndex(playQueue, order, history, currentIndex);
+        const prevIndex = prevShuffleIndexFromRound(playQueue, order, history, currentIndex);
         const nextIndex = nextShuffleIndexWrapping(order, currentIndex);
         // 停在排列最后一首时，下一首是谁要等重洗才知道：能按，但标题填不出来。
         const nextIsUnknown = position < 0 || position >= order.length - 1;
