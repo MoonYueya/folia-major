@@ -195,10 +195,12 @@ describe('folium services', () => {
 
         control.setLoopMode('one');
         expect(actions.setLoopMode).toHaveBeenCalledWith('one');
-        expect(() => control.setLoopMode('shuffle' as never)).toThrow('playback.setLoopMode: unknown mode "shuffle"');
+        control.setLoopMode('shuffle');
+        expect(actions.setLoopMode).toHaveBeenCalledWith('shuffle');
+        expect(() => control.setLoopMode('random' as never)).toThrow('playback.setLoopMode: unknown mode "random"');
         expect(actions.setVolume).toHaveBeenCalledTimes(3);
         expect(actions.setMuted).toHaveBeenCalledTimes(1);
-        expect(actions.setLoopMode).toHaveBeenCalledTimes(1);
+        expect(actions.setLoopMode).toHaveBeenCalledTimes(2);
 
         const exported = createFoliumPlaybackService(mod({ permissions: ['playback.control'] }), 'export');
         expect(() => exported.setVolume(0.5)).toThrow('playback-unavailable-in-export-context');

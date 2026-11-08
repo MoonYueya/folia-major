@@ -228,7 +228,7 @@ export interface FoliumSong {
 export type FoliumPlaybackState = 'playing' | 'paused' | 'stopped';
 
 /** The repeat mode. `all` repeats the queue, `one` the current song. */
-export type FoliumLoopMode = 'off' | 'all' | 'one';
+export type FoliumLoopMode = 'off' | 'all' | 'shuffle' | 'one';
 
 /** One entry of the play queue, as `folium.playback.getQueue()` lists it. */
 export interface FoliumQueueItem {

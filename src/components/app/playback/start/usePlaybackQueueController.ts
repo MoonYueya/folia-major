@@ -34,14 +34,18 @@ import {
 import { isQueueSongPlayable } from '../playableSong';
 import { supplyLyricsAfterEmptyLoad } from '../createLyricsSetter';
 import {
+    buildShuffleOrder,
     canShuffleQueue,
     fmNeedsTopUpAt,
     hasTrackToSkipTo,
     nextPlayableQueueSong, nextPlayableQueueIndex,
+    nextPlayableShuffleQueueIndex,
     nextQueueIndex,
     prevQueueIndex,
+    prevShuffleQueueIndex,
     queueIndexOf,
     queueLoopMode,
+    queueOrderSignature,
     resolvePlaybackNeighbors,
 } from '../../../../utils/playbackNeighbors';
 import { freshFmSongs } from '../../../../utils/fmQueue';
@@ -412,6 +416,41 @@ export function usePlaybackQueueController({
         const currentIndex = queueIndexOf(queue, song);
         return nextPlayableQueueSong(queue, currentIndex, queueLoopMode(loopMode, isFm), isQueueSongPlayable);
     }, [loopMode]);
+
+    /**
+     * 随机播放这一轮用的排列（队列下标）。进随机模式后的第一次切歌才洗，其余随机数都来自这里；
+     * 只在这一次运行里有效，不写进 localStorage 也不跨重启保留。
+     */
+    const shuffleOrderRef = useRef<number[]>([]);
+    /** 洗这份排列时队列的顺序签名：队列一改（增删、移动、命令式打乱、换歌单）就作废重洗。 */
+    const shuffleOrderSignatureRef = useRef('');
+
+    useEffect(() => {
+        if (loopMode === 'shuffle') return;
+        // 离开随机模式后这份排列就没用了：再进来要重新洗一次，而不是接着上一轮的顺序放。
+        shuffleOrderRef.current = [];
+        shuffleOrderSignatureRef.current = '';
+    }, [loopMode]);
+
+    /** 这一轮的排列，需要时现洗一份：当前这首排在最前，其余打乱。队列顺序变了就重洗。 */
+    const shuffleOrderFor = useCallback((queue: SongResult[], currentIndex: number): number[] => {
+        const signature = queueOrderSignature(queue);
+        const kept = shuffleOrderRef.current;
+        if (kept.length === queue.length && shuffleOrderSignatureRef.current === signature) {
+            return kept;
+        }
+        const built = buildShuffleOrder(queue.length, currentIndex, Math.random);
+        shuffleOrderRef.current = built;
+        shuffleOrderSignatureRef.current = signature;
+        return built;
+    }, []);
+
+    /** 一轮放完重洗：新排列以此刻这首为起点，因此接着往下放不会重走这一轮的顺序。 */
+    const reshuffleOrder = useCallback((queueLength: number, currentIndex: number): number[] => {
+        const built = buildShuffleOrder(queueLength, currentIndex, Math.random);
+        shuffleOrderRef.current = built;
+        return built;
+    }, []);
 
     const buildQueueWithReplacementSong = useCallback((
         queue: SongResult[],
@@ -1451,6 +1490,28 @@ export function usePlaybackQueueController({
             return;
         }
 
+        // 随机模式：下一首是那一份排列里的下一首；走到排列的最后一首就重洗一份，接着往下放。
+        // 私人 FM 进不来这里（queueLoopMode 把 FM 按不循环算），FM 的队列由电台续上。
+        if (indexLoopMode === 'shuffle') {
+            const order = shuffleOrderFor(playQueue, currentIndex);
+            const position = order.indexOf(currentIndex);
+            // 这一轮放完了（或当前曲不在排列里）：先重洗，再取新排列里的下一首。
+            const atRoundEnd = position < 0 || position >= order.length - 1;
+            const round = atRoundEnd ? reshuffleOrder(playQueue.length, currentIndex) : order;
+            const shuffledIndex = nextPlayableShuffleQueueIndex(playQueue, round, currentIndex, isQueueSongPlayable);
+            if (shuffledIndex >= 0) {
+                void playSong(playQueue[shuffledIndex], playQueue, false, {
+                    shouldNavigateToPlayer,
+                    unavailableSkipCount: options?.unavailableSkipCount,
+                    isAutomixAdvance: options?.isAutomixAdvance,
+                    autoAdvance: options?.autoAdvance,
+                });
+            } else if (options?.allowStopOnMissing) {
+                stopAtQueueEnd();
+            }
+            return;
+        }
+
         const nextIndex = nextPlayableQueueIndex(playQueue, currentIndex, indexLoopMode, isQueueSongPlayable);
 
         if (nextIndex >= 0) {
@@ -1463,7 +1524,7 @@ export function usePlaybackQueueController({
         } else if (options?.allowStopOnMissing) {
             stopAtQueueEnd();
         }
-    }, [audioRef, currentSong, endHeldTransition, getDisplaySong, isFmMode, isNowPlayingStageActive, loopMode, playQueue, playSong, setPlayQueue, setPlayerState, shouldNavigateToPlayerOnTrackChange]);
+    }, [audioRef, currentSong, endHeldTransition, getDisplaySong, isFmMode, isNowPlayingStageActive, loopMode, playQueue, playSong, reshuffleOrder, setPlayQueue, setPlayerState, shouldNavigateToPlayerOnTrackChange, shuffleOrderFor]);
 
     // `replayCurrentAtStart`: asked by the external player's pull-back when the player was stepped
     // back by its own controls. With no song before this one, the current song starts over from its
@@ -1479,7 +1540,23 @@ export function usePlaybackQueueController({
         if (heldSong) endHeldTransition?.();
         const currentIndex = queueIndexOf(playQueue, heldSong ?? currentSong);
         // Nor does Personal FM jump back from its first track to the newest one at the queue's end.
-        const prevIndex = prevQueueIndex(playQueue.length, currentIndex, queueLoopMode(loopMode, isFmMode));
+        const indexLoopMode = queueLoopMode(loopMode, isFmMode);
+        // 随机模式：上一首是这一轮里刚放过的那一首，不临时再抽一次随机 —— 那样会跳到没听过的地方。
+        if (indexLoopMode === 'shuffle') {
+            const previousIndex = prevShuffleQueueIndex(shuffleOrderFor(playQueue, currentIndex), currentIndex);
+            if (previousIndex >= 0) {
+                void playSong(playQueue[previousIndex], playQueue, false, {
+                    shouldNavigateToPlayer: shouldNavigateToPlayerOnTrackChange,
+                });
+            } else if (options?.replayCurrentAtStart === true) {
+                void playSong(heldSong ?? currentSong, playQueue, false, {
+                    shouldNavigateToPlayer: shouldNavigateToPlayerOnTrackChange,
+                    startAtSec: 0,
+                });
+            }
+            return;
+        }
+        const prevIndex = prevQueueIndex(playQueue.length, currentIndex, indexLoopMode);
 
         if (prevIndex >= 0) {
             void playSong(playQueue[prevIndex], playQueue, isFmMode, {
@@ -1491,7 +1568,7 @@ export function usePlaybackQueueController({
                 startAtSec: 0,
             });
         }
-    }, [currentSong, endHeldTransition, getDisplaySong, isFmMode, isNowPlayingStageActive, loopMode, playQueue, playSong, shouldNavigateToPlayerOnTrackChange]);
+    }, [currentSong, endHeldTransition, getDisplaySong, isFmMode, isNowPlayingStageActive, loopMode, playQueue, playSong, shouldNavigateToPlayerOnTrackChange, shuffleOrderFor]);
 
     // A failure's buttons may be pressed long after: they call the newest handleNextTrack / playSong, with
     // the queue of that moment. The failures of playSong use it too; their closures read `.current` only

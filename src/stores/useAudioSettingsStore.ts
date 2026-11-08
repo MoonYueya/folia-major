@@ -8,7 +8,7 @@
 
 import { create } from 'zustand';
 import type { AudioQualityPreference } from '../types/onlineMusic';
-import { type QueueAddBehavior } from '../types';
+import { type QueueAddBehavior, type StageLoopMode } from '../types';
 import { areAudioEqualizerSettingsEqual, planAudioSoundPreset, readStoredAudioEqualizerSettings, resolveAudioEqualizerSettings, writeStoredAudioEqualizerSettings, type AudioEqualizerCustomSlotId, type AudioEqualizerModeId, type AudioEqualizerSettings } from '../utils/audioEqualizer';
 import {
     areAudioEqualizerModCurvesEqual,
@@ -132,13 +132,13 @@ const readStoredAudioOutputDeviceId = (): string => {
     return localStorage.getItem('audio_output_device_id') ?? '';
 };
 
-const readStoredLoopMode = (): 'off' | 'all' | 'one' => {
+const readStoredLoopMode = (): StageLoopMode => {
     if (typeof window === 'undefined') {
         return 'off';
     }
 
     const saved = localStorage.getItem('player_loop_mode');
-    return saved === 'all' || saved === 'one' ? saved : 'off';
+    return saved === 'all' || saved === 'one' || saved === 'shuffle' ? saved : 'off';
 };
 
 /**
@@ -224,7 +224,7 @@ export type AudioSettingsState = {
     isAudioEqualizerOpen: boolean;
     volume: number;
     isMuted: boolean;
-    loopMode: 'off' | 'all' | 'one';
+    loopMode: StageLoopMode;
     setAudioQuality: (quality: AudioQuality) => void;
     handleToggleMediaCache: (enable: boolean) => void;
     handleSetMediaCacheLimitGb: (gigabytes: number) => void;
@@ -267,7 +267,7 @@ export type AudioSettingsState = {
     handleSetMuted: (muted: boolean) => void;
     handleToggleMute: () => void;
     /** Sets the repeat mode and toasts it like the repeat button; the mode already in effect is a no-op. */
-    handleSetLoopMode: (mode: 'off' | 'all' | 'one') => void;
+    handleSetLoopMode: (mode: StageLoopMode) => void;
     handleToggleLoopMode: () => void;
 };
 
@@ -485,20 +485,31 @@ export const useAudioSettingsStore = create<AudioSettingsState>((set, get) => ({
             localStorage.setItem('player_loop_mode', mode);
         }
         set({ loopMode: mode });
-        const loopModeKey = mode === 'off' ? 'loopOff' : mode === 'one' ? 'loopOne' : 'loopAll';
+        // 逐个列出来，路径别写死成一串判断：四种模式各有自己的文案，缺一个就是少一种。
+        const loopModeKey = mode === 'off'
+            ? 'loopOff'
+            : mode === 'all'
+                ? 'loopAll'
+                : mode === 'shuffle'
+                    ? 'loopShuffle'
+                    : 'loopOne';
         setStatusMessage({
             type: 'success',
             text: i18n.t(`player.${loopModeKey}`),
             nonce: Date.now(),
         });
     },
+    // 四态按 不循环 → 列表循环 → 随机 → 单曲循环 转一圈：随机是一个常驻的播放模式，
+    // 所以它排在列表循环和单曲循环之间，而不是按钮上的一个一次性动作。
     handleToggleLoopMode: () => {
         const prev = get().loopMode;
         const next = prev === 'off'
             ? 'all'
             : prev === 'all'
-                ? 'one'
-                : 'off';
+                ? 'shuffle'
+                : prev === 'shuffle'
+                    ? 'one'
+                    : 'off';
         get().handleSetLoopMode(next);
     },
 }));

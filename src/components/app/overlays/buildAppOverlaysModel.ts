@@ -6,7 +6,7 @@ import type DevDebugOverlay from '../../DevDebugOverlay';
 import type MemoryMonitorWindow from '../../debug/MemoryMonitorWindow';
 import type NowPlayingToast from './NowPlayingToast';
 import { PlayerState } from '../../../types';
-import type { SongResult, UnifiedSong, LyricData } from '../../../types';
+import type { SongResult, UnifiedSong, LyricData, StageLoopMode } from '../../../types';
 import { resolvePlaybackNeighbors } from '../../../utils/playbackNeighbors';
 import { getPlaybackSongKey } from '../../../utils/appPlaybackGuards';
 import { getSongArtistLabel } from '../../../services/onlineMusic/songMetadata';
@@ -93,7 +93,7 @@ export type AppOverlaysDeps = {
     /** 本地曲库里有没有歌（搜索页据此列不列「本地」来源）。 */
     hasLocalSongs: boolean;
     devDebugSnapshot: any;
-    effectiveLoopMode: 'off' | 'all' | 'one';
+    effectiveLoopMode: StageLoopMode;
     canToggleCurrentPlayback: boolean;
     isNowPlayingControlDisabled: boolean;
     stageActiveEntryKind: string | null;
