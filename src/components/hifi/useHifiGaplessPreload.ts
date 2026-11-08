@@ -58,6 +58,9 @@ export const hifiGaplessNextSong = (
     if (playbackRoute !== 'hifi' || !current || current.promotedByGapless || loadState !== 'ready') return null;
     if (engineTrackKey !== current.trackKey || (engineStatus !== 'playing' && engineStatus !== 'paused')) return null;
     if (loopMode === 'one' && !isFmMode) return null;
+    // 随机模式的下一首由切歌 handler 手里那份排列决定，这里算出来的是队列里的下一首：
+    // 接错了会无缝接到一首不会播的歌上，所以随机模式下不预接，等这一首放完由 handler 切。
+    if (loopMode === 'shuffle' && !isFmMode) return null;
     if (!currentSong || getPlaybackSongKey(currentSong) !== current.songKey) return null;
     const nextIndex = nextQueueIndex(playQueue.length, queueIndexOf(playQueue, currentSong), queueLoopMode(loopMode, isFmMode));
     const next = nextIndex >= 0 ? playQueue[nextIndex] : null;
