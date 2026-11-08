@@ -18,7 +18,7 @@ import type { PonderSceneScript, PonderTargetDefinition } from '../../../../type
 
 const QUEUE_TAB_X = sidePanelTabCenterX('queue');
 
-/** 第一章：没有随机模式，只有打乱队列这一下。 */
+/** 第一章：循环按钮上的随机是常驻模式，打乱队列只洗一次牌，两者不是一回事。 */
 const noShuffleMode: PonderSceneScript = {
     id: 'queue-shuffle-no-mode',
     titleKey: 'ponder.scenes.queueShuffleNoMode',
@@ -159,7 +159,7 @@ export default {
     titleKey: 'ponder.targets.queueShuffle',
     category: 'playback',
     summaryKey: 'ponder.summaries.queue_shuffle',
-    // 没有一颗按钮叫「随机」可以悬停：入口是导航页、命令面板，和连点循环按钮时弹出的那条提示。
+    // 打乱队列没有一颗专属按钮可以悬停：四个入口分别是命令、控制条槽位、队列面板和固定命令，各讲一章。
     hoverSelector: null,
     relatedTargetIds: ['player-bar', 'panel-queue-tab', 'pinned-commands', 'command-palette'],
     scenes: [noShuffleMode, byCommand, bySlot, byQueuePanel, byPinnedCommand],
