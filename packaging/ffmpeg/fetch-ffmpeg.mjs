@@ -68,11 +68,47 @@ const sha256File = async (file) =>
     .update(await readFile(file))
     .digest("hex");
 
-const download = async (url, destination) => {
-  const response = await fetch(url, { redirect: "follow" });
+const RETRY_DELAYS_MS = [2000, 5000, 10000];
+
+const downloadOnce = async (url, destination) => {
+  const fail = (message, retryable, reason) =>
+    Object.assign(new Error(message), { retryable, reason });
+  let response;
+  try {
+    response = await fetch(url, { redirect: "follow" });
+  } catch (cause) {
+    const detail = cause instanceof Error ? cause.message : String(cause);
+    throw fail(
+      `Unable to download ${url}: ${detail}`,
+      true,
+      `network error: ${detail}`,
+    );
+  }
   if (!response.ok)
-    throw new Error(`Unable to download ${url}: HTTP ${response.status}`);
+    throw fail(
+      `Unable to download ${url}: HTTP ${response.status}`,
+      response.status === 429 || response.status >= 500,
+      `HTTP ${response.status}`,
+    );
   await writeFile(destination, Buffer.from(await response.arrayBuffer()));
+};
+
+// Retries only transient failures: a gateway 5xx, 429, or a dead socket. Any other
+// 4xx is a bad URL or a bad pin and is thrown at once so a config error stays visible.
+const download = async (url, destination) => {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await downloadOnce(url, destination);
+    } catch (error) {
+      const retries = RETRY_DELAYS_MS.length;
+      if (!error?.retryable || attempt >= retries) throw error;
+      const delay = RETRY_DELAYS_MS[attempt];
+      console.warn(
+        `[ffmpeg] download attempt ${attempt + 1}/${retries + 1} failed (${error.reason}), retrying in ${delay}ms`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
 };
 
 const extractArchive = (archive, destination) => {
