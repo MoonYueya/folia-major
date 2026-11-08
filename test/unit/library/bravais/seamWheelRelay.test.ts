@@ -3,35 +3,40 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { attachSeamWheelRelay, seamConsumesWheel } from '../../../../src/library/suites/bravais/bravaisSeamWheel';
 
 // 缝里的滚轮（bug 修复用例）：缝是墙的滚轮容器 .lattice-field 的**兄弟**节点，指针落在信息条 / 书脊 / 标题 /
-// 说明文字上时 wheel 事件冒泡不到墙的监听，整条缝是滚轮死区。bravaisSeamWheel 把缝里的滚轮接回墙上：
-// 缝里真能滚的祖先（展开后溢出的说明、挤满的信息条、横向溢出的首页窄缝）先自己滚，滚到头再交给墙。
-// 这里的 DOM 按 BravaisStage 的真实结构搭（field 与 seam 兄弟），滚动尺寸用 defineProperty 摆出来——
-// jsdom 不做排版，scrollHeight / clientHeight 一律为 0。
+// 说明文字 / 折叠后的边缘标签上时 wheel 事件冒泡不到墙的监听，整条缝是滚轮死区。bravaisSeamWheel 把缝里的滚轮
+// 接回墙上（监听挂在 stage 的根节点上）：缝里真能滚的祖先（展开后溢出的说明、挤满的信息条、横向溢出的首页窄缝）
+// 先自己滚，滚到头再交给墙；同一手势里惯性的尾巴留在容器边上。
+// 这里的 DOM 按 BravaisStage 的真实结构搭（field、缝、边缘标签是同一个 section 里的兄弟），滚动尺寸用
+// defineProperty 摆出来——jsdom 不做排版，scrollHeight / clientHeight 一律为 0。
 
 const buildSeam = () => {
     document.body.innerHTML = `
         <section class="bravais-root" data-bravais-seam-axis="y">
             <div class="lattice-field bravais-field"></div>
-            <div class="bravais-seam" data-bravais-seam-axis="y">
-                <div class="bravais-seam-content">
-                    <div class="bravais-seam-body">
-                        <div class="bravais-seam-row is-full">
-                            <button type="button" class="bravais-seam-title-area" id="title"><span>望</span></button>
-                            <div class="bravais-seam-row-info" id="info">
-                                <span id="meta">308 首</span>
-                                <button type="button" class="bravais-chrome-button" id="play">播放全部</button>
+            <div class="bravais-seam-track">
+                <div class="bravais-seam" data-bravais-seam-axis="y">
+                    <div class="bravais-seam-content">
+                        <div class="bravais-seam-body">
+                            <div class="bravais-seam-row is-full">
+                                <button type="button" class="bravais-seam-title-area" id="title"><span>望</span></button>
+                                <div class="bravais-seam-row-info" id="info">
+                                    <span id="meta">308 首</span>
+                                    <button type="button" class="bravais-chrome-button" id="play">播放全部</button>
+                                </div>
+                                <div class="bravais-seam-blurb is-open" id="blurb">一段很长的简介</div>
                             </div>
-                            <div class="bravais-seam-blurb is-open" id="blurb">一段很长的简介</div>
                         </div>
                     </div>
                 </div>
             </div>
+            <button type="button" class="bravais-seam-tab" id="tab">信息条</button>
         </section>
     `;
+    const root = document.querySelector<HTMLElement>('.bravais-root')!;
     const seam = document.querySelector<HTMLElement>('.bravais-seam')!;
     const field = document.querySelector<HTMLElement>('.lattice-field')!;
     const byId = (id: string) => document.getElementById(id)!;
-    return { seam, field, info: byId('info'), meta: byId('meta'), blurb: byId('blurb'), title: byId('title') };
+    return { root, seam, field, tab: byId('tab'), info: byId('info'), meta: byId('meta'), blurb: byId('blurb'), title: byId('title') };
 };
 
 type Metrics = { content: number; size: number; position?: number };
@@ -57,26 +62,36 @@ const wheel = (target: Element, init: WheelEventInit = { deltaY: 120 }) => {
     return { event, defaultPrevented: !notCancelled };
 };
 
+/** 手势锁的时长（SEAM_WHEEL_LATCH_MS = 160）之外。 */
+const afterLatch = () => new Promise(resolve => setTimeout(resolve, 240));
+
+const pointerMove = (x: number, y: number) => {
+    window.dispatchEvent(new MouseEvent('pointermove', { bubbles: true, clientX: x, clientY: y }));
+};
+
 afterEach(() => { document.body.innerHTML = ''; });
 
 describe('缝里的滚轮接到墙上', () => {
-    it('bug 的结构原因：缝里的 wheel 冒泡不到墙的滚轮容器', () => {
-        const { seam, field, meta } = buildSeam();
+    it('bug 的结构原因：缝里的 wheel 冒泡不到墙的滚轮容器，边缘标签也不在缝里面', () => {
+        const { root, seam, field, tab, meta } = buildSeam();
         const onWall = vi.fn();
         field.addEventListener('wheel', onWall);
         wheel(meta);
         // field 与 seam 是兄弟节点，事件不经过 field —— 这就是信息条 / 书脊 / 标题上一滚就没有反应的原因。
         expect(onWall).not.toHaveBeenCalled();
         expect(seam.contains(meta)).toBe(true);
+        // 折叠后唯一能停指针的面上是这条边缘标签：它是 seam 之外的第三个同级节点，所以 relay 的根必须提到 stage。
+        expect(seam.contains(tab)).toBe(false);
+        expect(root.contains(tab)).toBe(true);
         field.removeEventListener('wheel', onWall);
     });
 
     it('信息条装得下时（不能滚）：滚轮交给墙，页面照常滚', () => {
-        const { seam, meta, info } = buildSeam();
+        const { root, meta, info } = buildSeam();
         // .bravais-seam-row-info 是 overflow-y: auto，308 首这类内容在横条里装得下 → 它滚不动。
         stubScroll(info, 'y', { content: 120, size: 120 });
         const forward = wallHandler();
-        const detach = attachSeamWheelRelay(seam, forward);
+        const detach = attachSeamWheelRelay(root, forward);
         const result = wheel(meta);
         expect(forward).toHaveBeenCalledTimes(1);
         expect(forward.mock.calls[0][0]).toBe(result.event);
@@ -84,70 +99,210 @@ describe('缝里的滚轮接到墙上', () => {
         detach();
     });
 
-    it('书脊 / 标题上没有能滚的东西：同样交给墙', () => {
-        const { seam, title } = buildSeam();
+    it('列表容器装得下时（滚不动）交给墙，不变成新的死区', () => {
+        const { root, seam } = buildSeam();
+        // 组件用例里列表面板由 react-window 撑满，这里补「装得下」的那一支：面板的 List 根节点有 overflow: auto
+        // 但内容比框矮 → 它不吃这一下，滚轮照常交给墙。
+        const list = document.createElement('div');
+        list.dataset.bravaisList = '';
+        list.innerHTML = '<button type="button" id="list-row">第一首</button>';
+        seam.querySelector('.bravais-seam-body')!.appendChild(list);
+        stubScroll(list, 'y', { content: 80, size: 80 });
         const forward = wallHandler();
-        const detach = attachSeamWheelRelay(seam, forward);
+        const detach = attachSeamWheelRelay(root, forward);
+        expect(wheel(document.getElementById('list-row')!).defaultPrevented).toBe(true);
+        expect(forward).toHaveBeenCalledTimes(1);
+        detach();
+    });
+
+    it('书脊 / 标题上没有能滚的东西：同样交给墙', () => {
+        const { root, title } = buildSeam();
+        const forward = wallHandler();
+        const detach = attachSeamWheelRelay(root, forward);
         expect(wheel(title).defaultPrevented).toBe(true);
         expect(forward).toHaveBeenCalledTimes(1);
         detach();
     });
 
+    it('折叠后指针停在边缘标签上滚轮，也交给墙（标签在缝之外，靠 stage 那层根覆盖）', () => {
+        const { root, tab } = buildSeam();
+        const forward = wallHandler();
+        const detach = attachSeamWheelRelay(root, forward);
+        const result = wheel(tab);
+        expect(forward).toHaveBeenCalledTimes(1);
+        expect(forward.mock.calls[0][0]).toBe(result.event);
+        expect(result.defaultPrevented).toBe(true);
+        detach();
+    });
+
+    it('落在 .lattice-field 里的 wheel 归墙自己那份监听：relay 不重复处理', () => {
+        const { root, field } = buildSeam();
+        const forward = wallHandler();
+        const detach = attachSeamWheelRelay(root, forward);
+        const result = wheel(field);
+        expect(forward).not.toHaveBeenCalled();
+        // 没被 relay 拦下（真身里 field 自己的 onWheel 已经 preventDefault 过一次）。
+        expect(result.defaultPrevented).toBe(false);
+        detach();
+    });
+
+    it('墙的手势锁在 window 捕获阶段截下的事件，relay 不再接一手（提升根节点不影响那条语义）', () => {
+        const { root, meta } = buildSeam();
+        const forward = wallHandler();
+        const detach = attachSeamWheelRelay(root, forward);
+        // useWallPointerPan 的 onLatchedWheel：锁定时对不在 container 里的目标 stopPropagation 后自己处理。
+        const lock = (event: Event) => event.stopPropagation();
+        window.addEventListener('wheel', lock, { capture: true });
+        const result = wheel(meta);
+        window.removeEventListener('wheel', lock, { capture: true });
+        expect(forward).not.toHaveBeenCalled();
+        expect(result.defaultPrevented).toBe(false);
+        detach();
+    });
+
     it('展开后真溢出的说明文字先自己滚，不交给墙', () => {
-        const { seam, blurb } = buildSeam();
+        const { root, blurb } = buildSeam();
         stubScroll(blurb, 'y', { content: 420, size: 240, position: 0 });
         const forward = wallHandler();
-        const detach = attachSeamWheelRelay(seam, forward);
+        const detach = attachSeamWheelRelay(root, forward);
         // 往下滚：还能滚，原生滚动交给浏览器（不 preventDefault、不推相机）。
         expect(wheel(blurb).defaultPrevented).toBe(false);
         expect(forward).not.toHaveBeenCalled();
         detach();
     });
 
-    it('说明文字滚到底后接着滚页面（不是被 overscroll-behavior: contain 掐死）', () => {
-        const { seam, blurb } = buildSeam();
+    it('说明文字滚到底后再滚：交给墙（不在缝里停住）', () => {
+        const { root, blurb } = buildSeam();
         stubScroll(blurb, 'y', { content: 420, size: 240, position: 180 });
         const forward = wallHandler();
-        const detach = attachSeamWheelRelay(seam, forward);
+        const detach = attachSeamWheelRelay(root, forward);
         expect(wheel(blurb).defaultPrevented).toBe(true);
         expect(forward).toHaveBeenCalledTimes(1);
         detach();
     });
 
     it('说明文字滚到顶后往上滚，也接着滚页面', () => {
-        const { seam, blurb } = buildSeam();
+        const { root, blurb } = buildSeam();
         stubScroll(blurb, 'y', { content: 420, size: 240, position: 0 });
         const forward = wallHandler();
-        const detach = attachSeamWheelRelay(seam, forward);
+        const detach = attachSeamWheelRelay(root, forward);
         expect(wheel(blurb, { deltaY: -120 }).defaultPrevented).toBe(true);
         expect(forward).toHaveBeenCalledTimes(1);
         detach();
     });
 
-    it('首页窄缝横向溢出：还能横向滚就先自己滚，到底了交回墙上', () => {
-        const { seam } = buildSeam();
-        const nav = document.createElement('div');
-        nav.className = 'bravais-seam-home-row-nav';
-        nav.innerHTML = '<button type="button" id="tab">书库</button>';
-        seam.querySelector('.bravais-seam-body')!.appendChild(nav);
-        const tab = document.getElementById('tab')!;
-
-        stubScroll(nav, 'x', { content: 600, size: 320, position: 0 });
+    it('惯性尾巴留在容器边上：吃到边界后同一手势里继续给的滚轮不推墙，停手超过锁定时间后才交给墙', async () => {
+        const { root, blurb } = buildSeam();
+        stubScroll(blurb, 'y', { content: 420, size: 240, position: 0 });
         const forward = wallHandler();
-        const detach = attachSeamWheelRelay(seam, forward);
-        expect(wheel(tab, { deltaX: 120, deltaY: 0 }).defaultPrevented).toBe(false);
+        const detach = attachSeamWheelRelay(root, forward);
+        // 第一下真的让说明文字自己滚。
+        expect(wheel(blurb).defaultPrevented).toBe(false);
         expect(forward).not.toHaveBeenCalled();
-
-        stubScroll(nav, 'x', { content: 600, size: 320, position: 280 });
-        expect(wheel(tab, { deltaX: 120, deltaY: 0 }).defaultPrevented).toBe(true);
+        // 甩到底：后面这一手剩下的惯性事件还在同一手势里，不能接着推墙（原来会「滚完简介接着推墙」）。
+        stubScroll(blurb, 'y', { content: 420, size: 240, position: 180 });
+        for (let index = 0; index < 4; index += 1) {
+            const result = wheel(blurb);
+            expect(result.defaultPrevented).toBe(false);
+        }
+        expect(forward).not.toHaveBeenCalled();
+        // 停手再滚是新手势：交给墙。
+        await afterLatch();
+        expect(wheel(blurb).defaultPrevented).toBe(true);
         expect(forward).toHaveBeenCalledTimes(1);
         detach();
     });
 
-    it('Ctrl / ⌘ + 滚轮（缩放）既不拦也不推', () => {
-        const { seam, meta } = buildSeam();
+    it('光标挪开超过 4px 也算换了目标：锁定解开，边界上的滚轮交给墙', () => {
+        const { root, blurb } = buildSeam();
+        stubScroll(blurb, 'y', { content: 420, size: 240, position: 0 });
         const forward = wallHandler();
-        const detach = attachSeamWheelRelay(seam, forward);
+        const detach = attachSeamWheelRelay(root, forward);
+        wheel(blurb);
+        stubScroll(blurb, 'y', { content: 420, size: 240, position: 180 });
+        expect(wheel(blurb).defaultPrevented).toBe(false);
+        pointerMove(120, 120);
+        expect(wheel(blurb).defaultPrevented).toBe(true);
+        expect(forward).toHaveBeenCalledTimes(1);
+        detach();
+    });
+
+    it('锁定期间不再做布局读取（边界计算只在手势的第一下）', () => {
+        const { root, blurb } = buildSeam();
+        stubScroll(blurb, 'y', { content: 420, size: 240, position: 0 });
+        const forward = wallHandler();
+        const detach = attachSeamWheelRelay(root, forward);
+        const readStyle = vi.spyOn(window, 'getComputedStyle');
+        wheel(blurb);
+        const afterFirst = readStyle.mock.calls.length;
+        expect(afterFirst).toBeGreaterThan(0);
+        stubScroll(blurb, 'y', { content: 420, size: 240, position: 180 });
+        for (let index = 0; index < 5; index += 1) wheel(blurb);
+        expect(readStyle.mock.calls.length).toBe(afterFirst);
+        readStyle.mockRestore();
+        detach();
+    });
+
+    it('首页窄缝横向溢出：还能横向滚就先自己滚，到底了交回墙上', async () => {
+        const { root, seam } = buildSeam();
+        const nav = document.createElement('div');
+        nav.className = 'bravais-seam-home-row-nav';
+        nav.innerHTML = '<button type="button" id="nav-tab">书库</button>';
+        seam.querySelector('.bravais-seam-body')!.appendChild(nav);
+        const navTab = document.getElementById('nav-tab')!;
+
+        stubScroll(nav, 'x', { content: 600, size: 320, position: 0 });
+        const forward = wallHandler();
+        const detach = attachSeamWheelRelay(root, forward);
+        expect(wheel(navTab, { deltaX: 120, deltaY: 0 }).defaultPrevented).toBe(false);
+        expect(forward).not.toHaveBeenCalled();
+
+        stubScroll(nav, 'x', { content: 600, size: 320, position: 280 });
+        // 同一手势里惯性还没停：仍然留在容器边上。
+        expect(wheel(navTab, { deltaX: 120, deltaY: 0 }).defaultPrevented).toBe(false);
+        expect(forward).not.toHaveBeenCalled();
+        // 停手之后再滚，才交给墙。
+        await afterLatch();
+        expect(wheel(navTab, { deltaX: 120, deltaY: 0 }).defaultPrevented).toBe(true);
+        expect(forward).toHaveBeenCalledTimes(1);
+        detach();
+    });
+
+    it('Shift + 竖向滚轮在横向溢出的首页窄缝上先自己滚（和墙同一套换算）', () => {
+        const { root, seam } = buildSeam();
+        const nav = document.createElement('div');
+        nav.className = 'bravais-seam-home-row-nav';
+        nav.innerHTML = '<button type="button" id="shift-tab">书库</button>';
+        seam.querySelector('.bravais-seam-body')!.appendChild(nav);
+        const navTab = document.getElementById('shift-tab')!;
+
+        stubScroll(nav, 'x', { content: 600, size: 320, position: 0 });
+        const forward = wallHandler();
+        const detach = attachSeamWheelRelay(root, forward);
+        // 不用 Shift：这一下是竖向的，窄缝没有纵向溢出 → 交给墙。
+        expect(wheel(navTab, { deltaY: 120 }).defaultPrevented).toBe(true);
+        expect(forward).toHaveBeenCalledTimes(1);
+        // 按住 Shift：wallWheelDelta 把竖向改走横向，窄缝这一下还能横向滚 → 自己滚。
+        expect(wheel(navTab, { deltaY: 120, shiftKey: true }).defaultPrevented).toBe(false);
+        expect(forward).toHaveBeenCalledTimes(1);
+        detach();
+    });
+
+    it('已经被 preventDefault 过的 wheel 不再 forward', () => {
+        const { root, meta } = buildSeam();
+        const swallow = (event: Event) => event.preventDefault();
+        meta.addEventListener('wheel', swallow);
+        const forward = wallHandler();
+        const detach = attachSeamWheelRelay(root, forward);
+        expect(wheel(meta).defaultPrevented).toBe(true);
+        expect(forward).not.toHaveBeenCalled();
+        detach();
+    });
+
+    it('Ctrl / ⌘ + 滚轮（缩放）既不拦也不推', () => {
+        const { root, meta } = buildSeam();
+        const forward = wallHandler();
+        const detach = attachSeamWheelRelay(root, forward);
         expect(wheel(meta, { deltaY: 120, ctrlKey: true }).defaultPrevented).toBe(false);
         expect(wheel(meta, { deltaY: 120, metaKey: true }).defaultPrevented).toBe(false);
         expect(forward).not.toHaveBeenCalled();
@@ -155,14 +310,14 @@ describe('缝里的滚轮接到墙上', () => {
     });
 
     it('卸载后缝里不再接滚轮', () => {
-        const { seam, meta } = buildSeam();
+        const { root, meta } = buildSeam();
         const forward = wallHandler();
-        attachSeamWheelRelay(seam, forward)();
+        attachSeamWheelRelay(root, forward)();
         wheel(meta);
         expect(forward).not.toHaveBeenCalled();
     });
 
-    it('没有缝（null）时退化成什么都不做，不抛错', () => {
+    it('没有根节点（null）时退化成什么都不做，不抛错', () => {
         const forward = wallHandler();
         expect(() => attachSeamWheelRelay(null, forward)()).not.toThrow();
         expect(forward).not.toHaveBeenCalled();

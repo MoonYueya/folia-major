@@ -219,7 +219,7 @@ const BravaisStage: React.FC<LibrarySuiteStageProps> = ({
         return resolveSeamAxis(resolveSeamTarget(seamInputFor(target)).variant, horizontal) ?? (horizontal ? 'y' : 'x');
     }, [seamInputFor]);
 
-    const camera = useBravaisCamera({ frameRef, renderFrame, fieldRef, seamRef, reducedMotion });
+    const camera = useBravaisCamera({ frameRef, renderFrame, fieldRef, rootRef, reducedMotion });
     // 墙此刻的显示（useBravaisDisplay 提交时就写进它）：形状从它读，换形状的同一次提交里各处就按新形状找 slot。
     const displayBridgeRef = useRef<BravaisDisplay | null>(null);
     const getShape = useCallback(() => displayBridgeRef.current?.shape ?? BRAVAIS_BLOCK_SHAPE, []);

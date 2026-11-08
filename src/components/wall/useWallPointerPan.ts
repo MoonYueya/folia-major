@@ -47,8 +47,8 @@ export const useWallPointerPan = ({
     } | null>(null);
     // Read by the poster click handler so a drag that ends on a card does not open it.
     const didDragRef = useRef(false);
-    // 缝盖在墙上、却是 .lattice-field 的兄弟节点（BravaisStage 的渲染）：指针落在缝里时 wheel 到不了下面的
-    // container，由 forwardWheel 把同一个事件交给下面那份 onWheel（缝里的接缝规则见 bravaisSeamWheel.ts）。
+    // 盖在墙上面的兄弟层（如 bravais 的缝）：指针停在它上面时 wheel 到不了下面的 container，由 forwardWheel 把
+    // 同一个事件交给下面那份 onWheel。那一层要不要接、接给谁，由它自己的规则判断（见 bravaisSeamWheel.ts）。
     const wheelHandlerRef = useRef<((event: WheelEvent) => void) | null>(null);
 
     // Republishing bounds is what triggers a re-cull, so only do it near the edge of what is culled.

@@ -70,13 +70,14 @@ export const useBravaisCamera = ({
     frameRef,
     renderFrame,
     fieldRef,
-    seamRef,
+    rootRef,
     reducedMotion,
 }: {
     frameRef: MutableRefObject<BravaisFrameState>;
     renderFrame: () => void;
     fieldRef: RefObject<HTMLDivElement | null>;
-    seamRef: RefObject<HTMLDivElement | null>;
+    /** stage 的 <section>：缝和折叠后的边缘标签都在它下面，relay 挂这一层才盖得住（见 bravaisSeamWheel）。 */
+    rootRef: RefObject<HTMLElement | null>;
     reducedMotion: boolean;
 }) => {
     // 已裁剪（渲染了 slot）的可见范围；墙渲染它外扩 overscan 的 slot。
@@ -228,8 +229,8 @@ export const useBravaisCamera = ({
 
     // 缝是 .lattice-field 的兄弟节点，滚轮进不了墙的监听（信息条、书脊、标题、说明文字都因此滚不动）：
     // 把缝里的滚轮接回墙上同一套。缝里真能滚的地方（展开的说明、挤满的信息条、横向溢出的首页窄缝）先自己滚，
-    // 滚到头再交给墙（bravaisSeamWheel.ts）。
-    useEffect(() => attachSeamWheelRelay(seamRef.current, pointer.forwardWheel), [pointer.forwardWheel, seamRef]);
+    // 滚到头再交给墙；折叠 / 隐藏时缝收到 0 宽，唯一能停指针的边缘标签在缝之外，所以监听挂在 stage 的根节点。
+    useEffect(() => attachSeamWheelRelay(rootRef.current, pointer.forwardWheel), [pointer.forwardWheel, rootRef]);
 
     useEffect(() => () => {
         if (cullFrameRef.current !== null) cancelAnimationFrame(cullFrameRef.current);
