@@ -1,22 +1,31 @@
-// src/library/suites/bravais/bravaisSeamWheel.ts
-
 import { wallWheelDelta } from '../../../components/wall/wallPanMotion';
+
+// src/library/suites/bravais/bravaisSeamWheel.ts
+// 缝（含折叠后那条边缘标签）里的滚轮接回墙：缝里能滚的容器先自己滚，其余交给墙的同一个 onWheel。
 
 // 缝（横条 / 竖缝 / 书脊 / 首页窄缝）盖在墙上面，却是墙的滚轮容器 .lattice-field 的**兄弟**节点
 // （BravaisStage 的渲染：field 一个子节点、BravaisSeam 紧挨在后面）。墙的滚轮平移只挂在 .lattice-field 上
 // （useWallPointerPan 的 container.addEventListener('wheel', onWheel)），所以指针落在缝里时 wheel 事件
 // 既不在 field 内、也冒泡不到它，整条缝是一块滚轮死区——信息条、书脊、标题、说明文字上都一样。
+// 折叠 / 隐藏时缝的 width 收到 0、visibility: hidden，唯一能停指针的面是缝之外的第三个同级节点
+// .bravais-seam-tab（BravaisSeam 的渲染），所以监听挂在 stage 的 <section> 上，不是挂在缝上。
 // 这里把缝里的滚轮接回墙上，规则按「谁该吃掉这一下」分：
 // 1. 缝里真有一个能滚的祖先（展开后放不下的说明文字 .bravais-seam-blurb.is-open、挤满时的 .bravais-seam-row-info、
 //    横向溢出的首页窄缝导航段）且这一下还没到头 → 让它自己滚，不拦。
 // 2. 其余（含「已经滚到头」）→ 拦下来交给墙上同一个滚轮处理，相机接着走。
-// 因为交接在这一层完成，bravais.css / bravaisSeamRow.css 里那几个 overscroll-behavior: contain 不再有能力
-// 把滚轮掐死在缝里：contain 管的是原生链式滚动，而到头之后的那一下根本走不到原生那一步。
+// 同一个手势里由第 1 条吃下的容器继续吃（见 SEAM_WHEEL_LATCH_MS）：触控板甩到边界之后剩下的惯性事件
+// 不会一转手就变成推墙。
 
+/** 墙的滚轮容器：落在这里面的 wheel 由 useWallPointerPan 自己那份监听处理，relay 不重复接。 */
+const WALL_FIELD_SELECTOR = '.lattice-field';
 /** 这几个 overflow 值才是滚动容器：overflow: visible 的元素 scrollHeight 也会大于 clientHeight，但它滚不动。 */
 const SCROLLABLE_OVERFLOW = new Set(['auto', 'scroll', 'overlay']);
 /** 到头 / 到顶的容差：分数滚动位置（缩放后的 DPR）留一点余地，免得最后一格被当成「还能滚」而吃掉。 */
 const EDGE_TOLERANCE_PX = 1;
+/** 一个手势的长度：某个容器吃过一次后，这么久没有新的 wheel 才解锁（和 useWallPointerPan 的 WHEEL_LATCH_MS 同值）。 */
+const SEAM_WHEEL_LATCH_MS = 160;
+/** 光标真的挪开这么远也算换了目标，解锁。 */
+const LATCH_MOVE_PX = 4;
 
 const isScrollContainer = (element: HTMLElement, axis: 'x' | 'y') => {
     const style = window.getComputedStyle(element);
@@ -57,13 +66,45 @@ export const seamConsumesWheel = (target: EventTarget | null, root: HTMLElement,
  */
 export const attachSeamWheelRelay = (root: HTMLElement | null, forward: (event: WheelEvent) => void) => {
     if (!root) return () => {};
+    // 同一手势的锁：谁先吃下这一手就归谁，直到停手 SEAM_WHEEL_LATCH_MS 或光标挪开。锁定期间不碰布局。
+    let latch: { timer: number; x: number; y: number } | null = null;
+    const releaseLatch = () => {
+        if (!latch) return;
+        window.clearTimeout(latch.timer);
+        latch = null;
+        window.removeEventListener('pointermove', onLatchMove, true);
+    };
+    const onLatchMove = (event: globalThis.PointerEvent) => {
+        if (latch && Math.hypot(event.clientX - latch.x, event.clientY - latch.y) > LATCH_MOVE_PX) releaseLatch();
+    };
+    const holdLatch = (event: WheelEvent) => {
+        if (!latch) {
+            latch = { timer: 0, x: event.clientX, y: event.clientY };
+            window.addEventListener('pointermove', onLatchMove, true);
+        }
+        window.clearTimeout(latch.timer);
+        latch.timer = window.setTimeout(releaseLatch, SEAM_WHEEL_LATCH_MS);
+    };
     const onWheel = (event: WheelEvent) => {
+        // 墙自己的容器里的 wheel 已经归 useWallPointerPan 处理：这里第一句就退出，任何 preventDefault 都还没发生。
+        if (event.target instanceof Element && event.target.closest(WALL_FIELD_SELECTOR)) return;
         // 缩放（Ctrl / ⌘ + 滚轮）与墙上一致：不拦、不推。
         if (event.ctrlKey || event.metaKey || event.defaultPrevented) return;
+        // 这一手还没结束：开头吃下它的容器继续归它，跳过边界计算（缝的宽度每帧都在被写）。
+        if (latch) {
+            holdLatch(event);
+            return;
+        }
         const { dx, dy } = wallWheelDelta(event, window.innerHeight);
-        if (seamConsumesWheel(event.target, root, dx, dy)) return;
+        if (seamConsumesWheel(event.target, root, dx, dy)) {
+            holdLatch(event);
+            return;
+        }
         forward(event);
     };
     root.addEventListener('wheel', onWheel, { passive: false });
-    return () => root.removeEventListener('wheel', onWheel);
+    return () => {
+        releaseLatch();
+        root.removeEventListener('wheel', onWheel);
+    };
 };
