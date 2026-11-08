@@ -16,9 +16,13 @@ import { fileURLToPath } from "node:url";
 
 // Downloads one pinned Folia FFmpeg release asset for the Electron target and
 // stages only its runtime binary plus redistribution metadata for electron-builder.
+// The asset comes from releases/download when that path answers, and from the GitHub
+// API asset endpoint when it does not.
 
 export const FFMPEG_RELEASE_TAG = "v8.1.2-folia.5";
 const RELEASE_BASE_URL = `https://github.com/chthollyphile/folia-ffmpeg-build/releases/download/${FFMPEG_RELEASE_TAG}`;
+const RELEASE_API_URL =
+  "https://api.github.com/repos/chthollyphile/folia-ffmpeg-build/releases";
 
 export const FFMPEG_ASSETS = Object.freeze({
   "linux-x64": {
@@ -70,24 +74,36 @@ const sha256File = async (file) =>
 
 const RETRY_DELAYS_MS = [2000, 5000, 10000];
 
-const downloadOnce = async (url, destination) => {
-  const fail = (message, retryable, reason) =>
-    Object.assign(new Error(message), { retryable, reason });
-  let response;
+const transientError = (message, retryable, reason) =>
+  Object.assign(new Error(message), { retryable, reason });
+
+const isTransientStatus = (status) => status === 429 || status >= 500;
+
+// A token is optional: anonymous requests are answered, but CI tokens lift the rate limit.
+const requestHeaders = (accept) => {
+  const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
+  return token ? { accept, authorization: `Bearer ${token}` } : { accept };
+};
+
+const fetchResponse = async (url, headers) => {
   try {
-    response = await fetch(url, { redirect: "follow" });
+    return await fetch(url, { redirect: "follow", headers });
   } catch (cause) {
     const detail = cause instanceof Error ? cause.message : String(cause);
-    throw fail(
-      `Unable to download ${url}: ${detail}`,
+    throw transientError(
+      `Unable to fetch ${url}: ${detail}`,
       true,
       `network error: ${detail}`,
     );
   }
+};
+
+const downloadOnce = async (url, destination, headers) => {
+  const response = await fetchResponse(url, headers);
   if (!response.ok)
-    throw fail(
+    throw transientError(
       `Unable to download ${url}: HTTP ${response.status}`,
-      response.status === 429 || response.status >= 500,
+      isTransientStatus(response.status),
       `HTTP ${response.status}`,
     );
   await writeFile(destination, Buffer.from(await response.arrayBuffer()));
@@ -95,18 +111,75 @@ const downloadOnce = async (url, destination) => {
 
 // Retries only transient failures: a gateway 5xx, 429, or a dead socket. Any other
 // 4xx is a bad URL or a bad pin and is thrown at once so a config error stays visible.
-const download = async (url, destination) => {
+const withRetry = async (operation, description) => {
   for (let attempt = 0; ; attempt += 1) {
     try {
-      return await downloadOnce(url, destination);
+      return await operation();
     } catch (error) {
       const retries = RETRY_DELAYS_MS.length;
       if (!error?.retryable || attempt >= retries) throw error;
       const delay = RETRY_DELAYS_MS[attempt];
       console.warn(
-        `[ffmpeg] download attempt ${attempt + 1}/${retries + 1} failed (${error.reason}), retrying in ${delay}ms`,
+        `[ffmpeg] ${description} attempt ${attempt + 1}/${retries + 1} failed (${error.reason}), retrying in ${delay}ms`,
       );
       await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+};
+
+const download = (url, destination, headers) =>
+  withRetry(() => downloadOnce(url, destination, headers), "download");
+
+// Resolves the release's asset list through the API, which is answered when the
+// releases/download redirect chain in front of it is not.
+const resolveApiAssetUrl = async (archiveName) => {
+  const release = await withRetry(async () => {
+    const url = `${RELEASE_API_URL}/tags/${FFMPEG_RELEASE_TAG}?per_page=100`;
+    const response = await fetchResponse(
+      url,
+      requestHeaders("application/vnd.github+json"),
+    );
+    if (!response.ok)
+      throw transientError(
+        `Unable to list assets of ${FFMPEG_RELEASE_TAG}: HTTP ${response.status}`,
+        isTransientStatus(response.status),
+        `HTTP ${response.status}`,
+      );
+    return response.json();
+  }, "release lookup");
+  const assetUrl = release.assets?.find(
+    (entry) => entry.name === archiveName,
+  )?.url;
+  if (!assetUrl)
+    throw new Error(
+      `Release ${FFMPEG_RELEASE_TAG} exposes no asset named ${archiveName} through the GitHub API`,
+    );
+  return assetUrl;
+};
+
+// releases/download is intermittently answered with a gateway timeout, so a transient
+// failure falls back to the API asset endpoint. Both paths land in the same sha256 gate
+// in prepareBundledFfmpeg, so a substituted asset still has to match the pin.
+const downloadArchive = async (destination, archiveName) => {
+  try {
+    await download(`${RELEASE_BASE_URL}/${archiveName}`, destination);
+    return;
+  } catch (releaseError) {
+    if (!releaseError?.retryable) throw releaseError;
+    console.warn(
+      `[ffmpeg] releases/download failed for ${archiveName} (${releaseError.reason}), falling back to the GitHub API asset endpoint`,
+    );
+    try {
+      await download(
+        await resolveApiAssetUrl(archiveName),
+        destination,
+        requestHeaders("application/octet-stream"),
+      );
+    } catch (apiError) {
+      throw new Error(
+        `Unable to download ${archiveName}: releases/download failed (${releaseError.reason}) and the GitHub API asset endpoint failed (${apiError.reason ?? apiError.message})`,
+        { cause: apiError },
+      );
     }
   }
 };
@@ -157,7 +230,7 @@ export async function prepareBundledFfmpeg({
   let stagingDir;
   try {
     const archivePath = path.join(temporaryRoot, asset.archive);
-    await download(`${RELEASE_BASE_URL}/${asset.archive}`, archivePath);
+    await downloadArchive(archivePath, asset.archive);
     const actualSha256 = await sha256File(archivePath);
     if (actualSha256 !== asset.sha256) {
       throw new Error(

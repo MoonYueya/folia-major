@@ -269,6 +269,7 @@ jobs:
       - name: Package Electron app
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npx electron-builder --win --publish never --config.publish.channel=${{ env.FORK_RELEASE_CHANNEL_FILE }}
 
       - name: Verify update metadata
