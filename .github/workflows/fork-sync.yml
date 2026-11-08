@@ -188,6 +188,14 @@ jobs:
     timeout-minutes: 150
     env:
       TARGET_VERSION: ${{ needs.sync.outputs.version }}-spotify.${{ github.run_number }}
+      # The hosted runners reach github.com's release CDN through an edge that has been resetting
+      # connections mid-download (run 42471823914 died with "socket hang up" while electron-builder
+      # was fetching its helper binaries). Both mirrors were probed and serve the exact upstream
+      # bytes: the npmmirror SHASUMS256.txt for v43.7.5 is identical to electron's own, and the
+      # winCodeSign / nsis / nsis-resources archives match the sha256 constants hardcoded in
+      # electron-builder's toolsets/windows.js, so its integrity checks still pass.
+      ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
+      ELECTRON_BUILDER_BINARIES_MIRROR: https://npmmirror.com/mirrors/electron-builder-binaries/
 
     steps:
       - name: Check out Git repository
@@ -266,11 +274,45 @@ jobs:
             build/mnn
           key: mnn-${{ runner.os }}-${{ hashFiles('build/buildMnnRuntime.mjs', 'native/folia-mnn/**') }}
 
+      # electron-builder keeps its helper binaries (winCodeSign, nsis, nsis-resources, 7za) under
+      # %LOCALAPPDATA%\electron-builder\Cache: app-builder-lib/out/util/electronGet.js
+      # getCacheDirectory() resolves win32 to path.join(LOCALAPPDATA, "electron-builder", "Cache"),
+      # and every toolset lives beneath it (extract dirs, the archive cache and @electron/get's
+      # downloads root), so a cache hit skips the download entirely.
+      # The path is spelled out rather than read from %LOCALAPPDATA%: the ${{ env }} context only
+      # exposes variables this workflow declares, and actions/cache does not expand shell variables
+      # inside `path`. The hosted windows runner runs as runneradmin - run 42471823914 logged
+      # C:\Users\runneradmin 34 times - so this resolves on any windows-latest image.
+      # "Stamp package metadata" rewrites package.json before this point, so the versioned key flips
+      # every run; the restore-keys prefix is what actually produces the hit.
+      - name: Cache electron-builder binaries
+        uses: actions/cache@v4
+        with:
+          path: 'C:\Users\runneradmin\AppData\Local\electron-builder\Cache'
+          key: electron-builder-${{ runner.os }}-${{ hashFiles('package.json', 'package-lock.json') }}
+          restore-keys: |
+            electron-builder-${{ runner.os }}-
+
       - name: Package Electron app
+        shell: bash
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx electron-builder --win --publish never --config.publish.channel=${{ env.FORK_RELEASE_CHANNEL_FILE }}
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if ! npx electron-builder --win --publish never --config.publish.channel=${{ env.FORK_RELEASE_CHANNEL_FILE }}; then
+              echo "::warning::electron-builder 第 ${attempt} 次打包失败"
+              if [[ "${attempt}" -lt 3 ]]; then
+                echo '20 秒后重试'
+                sleep 20
+              fi
+              continue
+            fi
+            exit 0
+          done
+          echo '::error::electron-builder 连续 3 次打包失败'
+          exit 1
 
       - name: Verify update metadata
         shell: bash
