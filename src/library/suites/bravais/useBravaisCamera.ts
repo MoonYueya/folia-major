@@ -16,6 +16,7 @@ import { rubberBand } from './bravaisFiniteWall';
 import { computeBravaisFrame, getTiltReach } from './bravaisFrame';
 import type { BravaisFrameState } from './useBravaisFrame';
 import { seamBoundsOf } from './bravaisAnchor';
+import { attachSeamWheelRelay } from './bravaisSeamWheel';
 
 // src/library/suites/bravais/useBravaisCamera.ts
 // 相机：真源是视图中心（缝基准线下的世界点，B5 的约定），存在帧状态里；拖动 / 滚轮 / 惯性复用 wall 的
@@ -69,11 +70,13 @@ export const useBravaisCamera = ({
     frameRef,
     renderFrame,
     fieldRef,
+    seamRef,
     reducedMotion,
 }: {
     frameRef: MutableRefObject<BravaisFrameState>;
     renderFrame: () => void;
     fieldRef: RefObject<HTMLDivElement | null>;
+    seamRef: RefObject<HTMLDivElement | null>;
     reducedMotion: boolean;
 }) => {
     // 已裁剪（渲染了 slot）的可见范围；墙渲染它外扩 overscan 的 slot。
@@ -222,6 +225,11 @@ export const useBravaisCamera = ({
         getWorldBounds,
         viewportRef,
     });
+
+    // 缝是 .lattice-field 的兄弟节点，滚轮进不了墙的监听（信息条、书脊、标题、说明文字都因此滚不动）：
+    // 把缝里的滚轮接回墙上同一套。缝里真能滚的地方（展开的说明、挤满的信息条、横向溢出的首页窄缝）先自己滚，
+    // 滚到头再交给墙（bravaisSeamWheel.ts）。
+    useEffect(() => attachSeamWheelRelay(seamRef.current, pointer.forwardWheel), [pointer.forwardWheel, seamRef]);
 
     useEffect(() => () => {
         if (cullFrameRef.current !== null) cancelAnimationFrame(cullFrameRef.current);
