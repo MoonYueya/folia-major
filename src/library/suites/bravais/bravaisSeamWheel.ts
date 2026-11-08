@@ -18,6 +18,8 @@ import { wallWheelDelta } from '../../../components/wall/wallPanMotion';
 
 /** 墙的滚轮容器：落在这里面的 wheel 由 useWallPointerPan 自己那份监听处理，relay 不重复接。 */
 const WALL_FIELD_SELECTOR = '.lattice-field';
+/** 缝里已知的滚动容器自己带这个标记（仓库既有约定，见 GridView.tsx / CustomSelectMenu.tsx）。 */
+const SCROLL_REGION_SELECTOR = '[data-wheel-scroll-region]';
 /** 这几个 overflow 值才是滚动容器：overflow: visible 的元素 scrollHeight 也会大于 clientHeight，但它滚不动。 */
 const SCROLLABLE_OVERFLOW = new Set(['auto', 'scroll', 'overlay']);
 /** 到头 / 到顶的容差：分数滚动位置（缩放后的 DPR）留一点余地，免得最后一格被当成「还能滚」而吃掉。 */
@@ -47,12 +49,18 @@ const canScrollBy = (element: HTMLElement, axis: 'x' | 'y', delta: number) => {
 /**
  * 这一下滚轮该由缝里的某个滚动容器吃掉吗：从事件目标往上找到 root（含），遇到第一个在这方向上还能滚的
  * 滚动容器就交给它。位移用 wallWheelDelta 归一（按行 / 页换算、Shift + 竖向改走横向），和墙的判断同一套。
+ *
+ * 带 data-wheel-scroll-region 的容器走前面那一步快速判断：缝的宽度每帧都在被写（useBravaisFrame），
+ * 目标到容器之间的那几层没必要为了「是不是滚动容器」再读一遍 computed overflow。它装得下 / 到头了，
+ * 就把判断让回下面的通用遍历——未标记的容器（列表面板里 react-window 的外层）照样能自己滚。
  */
 export const seamConsumesWheel = (target: EventTarget | null, root: HTMLElement, dx: number, dy: number) => {
     if (!(target instanceof Element)) return false;
     const axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
     const delta = axis === 'x' ? dx : dy;
     if (delta === 0) return false;
+    const marked = target.closest(SCROLL_REGION_SELECTOR);
+    if (marked && root.contains(marked) && canScrollBy(marked as HTMLElement, axis, delta)) return true;
     for (let element: Element | null = target; element; element = element.parentElement) {
         if (canScrollBy(element as HTMLElement, axis, delta)) return true;
         if (element === root) break;
