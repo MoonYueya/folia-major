@@ -1,4 +1,4 @@
-import type { PlayerState, LyricData, SubtitleContentMode } from '../types';
+import type { PlayerState, LyricData, StageLoopMode, SubtitleContentMode } from '../types';
 import type { VideoExportPreset, VideoExportStartMode, VideoExportState } from './videoExport';
 import type { FoliumRemoteActionDef } from '../mods/folium/contract';
 
@@ -98,7 +98,7 @@ export interface RemoteControlSnapshot {
     currentTime: number;
     duration: number;
     playerState: PlayerState;
-    loopMode: 'off' | 'all' | 'one';
+    loopMode: StageLoopMode;
     canGoPrevious: boolean;
     canGoNext: boolean;
     prevTrackKey: string | null;

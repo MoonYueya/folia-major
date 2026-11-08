@@ -1,5 +1,6 @@
 import React from 'react';
 import { Theme, ThemeMode, VisualizerMode } from '../../types';
+import type { StageLoopMode } from '../../types';
 import type { ThemeSourceModel } from '../../hooks/themeControllerState';
 import AudioEqualizerDialog from './AudioEqualizerDialog';
 import AppearanceSection from './controls/AppearanceSection';
@@ -13,7 +14,7 @@ import { GroupLine } from './shell/GroupLine';
 // 控制标签页只负责装配，三组：声音（音量和三块）、外观（歌词样式、背景、播放页透明背景）、主题（来源和当前主题那一行）。
 
 interface ControlsTabProps {
-    loopMode: 'off' | 'all' | 'one';
+    loopMode: StageLoopMode;
     onToggleLoop: () => void;
     onGenerateAITheme: () => void;
     isGeneratingTheme: boolean;

@@ -1,4 +1,4 @@
-import { PlayerState, type LyricData, type PlaybackContext, type SongResult, type StagePlayerSnapshot, type SubtitleContentMode } from '../types';
+import { PlayerState, type LyricData, type PlaybackContext, type SongResult, type StageLoopMode, type StagePlayerSnapshot, type SubtitleContentMode } from '../types';
 import type { PlayerChromeVisibilityMode, RemoteControlSnapshot, RemoteTrackTransition } from '../types/remoteControl';
 import type { VideoExportState } from '../types/videoExport';
 import { getPlaybackSongKey, isLocalPlaybackSong } from './appPlaybackGuards';
@@ -23,7 +23,7 @@ export interface PlaybackSyncBridgeModel {
     durationSec: number;
     stageDurationSec: number;
     playerState: PlayerState;
-    loopMode: 'off' | 'all' | 'one';
+    loopMode: StageLoopMode;
     isFmMode: boolean;
     canGoPrevious: boolean;
     canGoNext: boolean;
@@ -54,7 +54,7 @@ export interface BuildPlaybackSyncBridgeModelArgs {
     playerState: PlayerState;
     coverUrl: string | null;
     cachedCoverUrl?: string | null;
-    effectiveLoopMode: 'off' | 'all' | 'one';
+    effectiveLoopMode: StageLoopMode;
     isFmMode: boolean;
     isStageActive: boolean;
     controlsDisabled: boolean;

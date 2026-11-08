@@ -81,15 +81,16 @@ describe('handleSetLoopMode', () => {
         expect(useStatusMessageStore.getState().message).toBeNull();
     });
 
-    it('backs the toggle, which still cycles off, all, one and toasts each step', () => {
+    it('backs the toggle, which cycles off, all, shuffle, one and toasts each step', () => {
         useAudioSettingsStore.setState({ loopMode: 'off' });
         const seen: [string, string | undefined][] = [];
-        for (let press = 0; press < 3; press += 1) {
+        for (let press = 0; press < 4; press += 1) {
             useAudioSettingsStore.getState().handleToggleLoopMode();
             seen.push([useAudioSettingsStore.getState().loopMode, useStatusMessageStore.getState().message?.text]);
         }
         expect(seen).toEqual([
             ['all', i18n.t('player.loopAll')],
+            ['shuffle', i18n.t('player.loopShuffle')],
             ['one', i18n.t('player.loopOne')],
             ['off', i18n.t('player.loopOff')],
         ]);

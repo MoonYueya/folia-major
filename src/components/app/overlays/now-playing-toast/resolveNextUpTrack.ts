@@ -1,5 +1,5 @@
 import { fmNextIsUnfetchedAt, nextQueueIndex, queueIndexOf } from '../../../../utils/playbackNeighbors';
-import type { SongResult } from '../../../../types';
+import type { SongResult, StageLoopMode } from '../../../../types';
 // src/components/app/overlays/now-playing-toast/resolveNextUpTrack.ts
 
 type ResolveNextUpTrackParams = {
@@ -9,7 +9,7 @@ type ResolveNextUpTrackParams = {
      * （即将淡出的），因为 currentSong 在 arm 时就已经异步推进过去了。
      */
     song: SongResult | null;
-    loopMode: 'off' | 'all' | 'one';
+    loopMode: StageLoopMode;
     isFmMode: boolean;
     isStageActive: boolean;
     /** 基准曲目不在队列里时是否退回队首，对齐 handleNextTrack 的下标规则 */
@@ -31,6 +31,12 @@ export const resolveNextUpTrack = ({
 }: ResolveNextUpTrackParams): SongResult | null => {
     // 舞台播放不推进主队列，单曲循环原地重播，两种情况都没有「下一首」
     if (!song || playQueue.length === 0 || isStageActive || loopMode === 'one') {
+        return null;
+    }
+
+    // 随机模式的下一首是那一份排列里的，这里拿不到它；按队列顺序报出来的是另一首，
+    // 所以这张卡片在随机模式下不报（见上：宁可 null 也不猜）。
+    if (loopMode === 'shuffle' && !isFmMode) {
         return null;
     }
 

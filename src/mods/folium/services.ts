@@ -107,7 +107,7 @@ const requireRef = (song: FoliumSong): string => {
     return song.ref;
 };
 
-const LOOP_MODES: readonly FoliumLoopMode[] = ['off', 'all', 'one'];
+const LOOP_MODES: readonly FoliumLoopMode[] = ['off', 'all', 'shuffle', 'one'];
 // The most queue entries one getQueue call returns, and its default page size.
 const MAX_QUEUE_PAGE = 500;
 

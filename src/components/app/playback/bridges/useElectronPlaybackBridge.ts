@@ -4,7 +4,7 @@ import type React from 'react';
 import type { RefObject } from 'react';
 import type { MotionValue } from 'framer-motion';
 import { PlayerState } from '../../../../types';
-import type { SongResult, LyricData } from '../../../../types';
+import type { SongResult, LyricData, StageLoopMode } from '../../../../types';
 import type {
     PlayerChromeVisibilityMode,
     RemoteControlCommand,
@@ -62,7 +62,7 @@ type UseElectronPlaybackBridgeOptions = {
      * already does with the displayed track.
      */
     getDisplayAudioElement?: () => HTMLAudioElement | null;
-    effectiveLoopMode: 'off' | 'all' | 'one';
+    effectiveLoopMode: StageLoopMode;
     isNowPlayingStageActive: boolean;
     mediaSessionPlayRef: RefObject<() => Promise<void>>;
     mediaSessionPauseRef: RefObject<() => void>;

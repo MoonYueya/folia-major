@@ -4,6 +4,7 @@ import type { SongResult, StageLoopMode } from '../types';
 // src/utils/playbackNeighbors.ts
 // 队列里「上一首 / 下一首」的规则只写在这里。前半是下标规则，都是纯函数（不碰 React、store、时钟），
 // 切歌的 handler、now playing 卡片、automix、预取都调它们；
+// 随机播放的那一份排列也在这里洗和走：洗的时候要哪个随机数由调用方给，这个文件自己不调 Math.random；
 // 后半的 resolvePlaybackNeighbors 把下标变成界面要的邻居信息，「上一首 / 下一首能不能按」只由它回答
 // （主窗口的箭头、遥控窗口与任务栏、舞台快照）。
 // 「这首歌在队列里的第几个」（queueIndexOf）和「队列现在能不能打乱」（canShuffleQueue）也只写在这里。
@@ -31,7 +32,9 @@ export const nextQueueIndex = (queueLength: number, currentIndex: number, loopMo
     if (queueLength <= 0) return -1;
     if (currentIndex < 0) return 0;
     if (currentIndex < queueLength - 1) return currentIndex + 1;
-    return loopMode === 'all' ? 0 : -1;
+    // 随机模式也绕圈，但它走的是自己那份排列（见 shuffleOrder* 那几个）；这里按列表循环答，
+    // 是给「后面还有没有」「能不能预读」这类只关心有没有下一首的地方用的。
+    return loopMode === 'all' || loopMode === 'shuffle' ? 0 : -1;
 };
 
 /**
@@ -40,7 +43,7 @@ export const nextQueueIndex = (queueLength: number, currentIndex: number, loopMo
  */
 export const prevQueueIndex = (queueLength: number, currentIndex: number, loopMode: StageLoopMode): number => {
     if (currentIndex > 0) return currentIndex - 1;
-    return loopMode === 'all' ? queueLength - 1 : -1;
+    return loopMode === 'all' || loopMode === 'shuffle' ? queueLength - 1 : -1;
 };
 
 /**
@@ -57,8 +60,85 @@ export const queueLoopMode = (loopMode: StageLoopMode, isFmMode: boolean): Stage
  * 当前曲目不在队列里时不退回队首，只有列表循环且队列不止一首才算。
  */
 export const hasTrackAfter = (queueLength: number, currentIndex: number, loopMode: StageLoopMode): boolean => (
-    (currentIndex >= 0 && currentIndex < queueLength - 1) || (loopMode === 'all' && queueLength > 1)
+    (currentIndex >= 0 && currentIndex < queueLength - 1)
+    || ((loopMode === 'all' || loopMode === 'shuffle') && queueLength > 1)
 );
+
+/**
+ * 队列的顺序签名：每首的 key 按位置连起来。
+ * 随机播放的那份排列要认「队列被改过没有」（增删、移动、命令式打乱、换歌单），
+ * 比整份队列便宜，也比长度和对象身份可靠：换一首同 key 的歌不改播放顺序。
+ */
+export const queueOrderSignature = (queue: SongResult[]): string => (
+    queue.map(song => getPlaybackSongKey(song)).join('\u0001')
+);
+
+/**
+ * 随机播放的一轮：队列下标的一个排列，当前这首排在最前（第一首就放它，不重播也不跳到别处）。
+ * 洗牌用 Fisher–Yates，每个排列等可能；随机数由调用方给（0 ≤ random() < 1），
+ * 这个文件不调 Math.random，测试才能给定序列把排列钉死。
+ * 当前曲不在队列里（firstIndex 为 -1）时整份打乱。
+ */
+export const buildShuffleOrder = (queueLength: number, firstIndex: number, random: () => number): number[] => {
+    if (queueLength <= 0) return [];
+    const rest: number[] = [];
+    for (let index = 0; index < queueLength; index += 1) {
+        if (index !== firstIndex) rest.push(index);
+    }
+    for (let i = rest.length - 1; i > 0; i -= 1) {
+        const j = Math.min(i, Math.floor(random() * (i + 1)));
+        const swapped = rest[i];
+        rest[i] = rest[j];
+        rest[j] = swapped;
+    }
+    return firstIndex >= 0 && firstIndex < queueLength ? [firstIndex, ...rest] : rest;
+};
+
+/**
+ * 排列里 currentIndex 的下一个下标，没有排列则 -1。
+ * 走到排列末尾绕回排列开头：随机模式一直往下放，真正的「一轮放完了要重洗」由切歌的 handler 决定，
+ * 这里只答下一步走到哪。
+ */
+export const nextShuffleQueueIndex = (order: readonly number[], currentIndex: number): number => {
+    if (order.length === 0) return -1;
+    const position = order.indexOf(currentIndex);
+    return position < 0 ? order[0] : order[(position + 1) % order.length];
+};
+
+/**
+ * 排列里 currentIndex 的上一个下标，没有排列则 -1。
+ * 回退的是这一轮刚放过的那首，不再抽一次随机 —— 否则「上一首」会跳到听众没听过的地方。
+ */
+export const prevShuffleQueueIndex = (order: readonly number[], currentIndex: number): number => {
+    if (order.length === 0) return -1;
+    const position = order.indexOf(currentIndex);
+    return position < 0 ? order[order.length - 1] : order[(position - 1 + order.length) % order.length];
+};
+
+/**
+ * 随机模式下这一轮里下一首能播的下标，没有则 -1。
+ * 只在这一轮里往后问：走到排列末尾就停下 —— 一轮放完要重洗，绕回去放这一轮开头那首是不对的。
+ * 只有一首的队列给的是它自己，和列表循环一样（那是重播自己）。
+ */
+export const nextPlayableShuffleQueueIndex = <T>(
+    queue: T[],
+    order: readonly number[],
+    currentIndex: number,
+    isPlayable: (song: T) => boolean,
+): number => {
+    if (order.length === 0) return -1;
+    if (order.length === 1) return isPlayable(queue[order[0]]) ? order[0] : -1;
+
+    const position = order.indexOf(currentIndex);
+    const stepsLeft = position < 0 ? order.length : order.length - 1 - position;
+    let index = currentIndex;
+    for (let step = 0; step < stepsLeft; step += 1) {
+        index = nextShuffleQueueIndex(order, index);
+        if (index < 0) return -1;
+        if (isPlayable(queue[index])) return index;
+    }
+    return -1;
+};
 
 /** Find the next playable row without deleting unavailable entries or probing the network. */
 export const nextPlayableQueueIndex = <T>(queue: T[], currentIndex: number, loopMode: StageLoopMode, isPlayable: (song: T) => boolean): number => {
@@ -127,6 +207,7 @@ export const hasTrackToSkipTo = (
  * 后面还有另一首（hasTrackAfter）时是 nextQueueIndex 那一首，列表循环时从最后一首绕回队首。
  * 私人 FM 的最后一首没有：下一首要现拉，还叫不出名字的曲目没法提前测量，FM 的队列也不绕回队首。
  * 这里不去拉。下一首和当前曲目是同一首歌（队列里排了两次）时也没有：那是重播，不是过渡。
+ * 随机模式也没有：下一首是那一份排列里的，这里算出来的是队列里的下一首，混进去就会混向一首不会播的歌。
  */
 export const nextTransitionSong = (
     queue: SongResult[],
@@ -136,6 +217,7 @@ export const nextTransitionSong = (
 ): SongResult | null => {
     const currentKey = getPlaybackSongKey(currentSong);
     const index = queueIndexOfKey(queue, currentKey);
+    if (loopMode === 'shuffle' && !isFmMode) return null;
     if (isFmMode && fmNextIsUnfetchedAt(queue.length, index)) return null;
 
     const next = hasTrackAfter(queue.length, index, loopMode)
@@ -179,7 +261,7 @@ const blockedNeighbor = (): PlaybackNeighbor => ({ canGo: false, key: null, titl
 type ResolvePlaybackNeighborsParams = {
     playQueue: SongResult[];
     currentSong: SongResult | null;
-    loopMode: 'off' | 'all' | 'one';
+    loopMode: StageLoopMode;
     isFmMode: boolean;
     isStageActive: boolean;
     /**
@@ -187,6 +269,12 @@ type ResolvePlaybackNeighborsParams = {
      * 只有需要预读下一首的遥控窗口用得上；浮动播放条只读 canGo 与 title，默认不付这份开销。
      */
     withMetadata?: boolean;
+    /**
+     * 随机模式这一轮用的排列（队列下标）—— 只有手里有它的调用方给。
+     * 给不了时（遥控窗口、任务栏、别处读快照的地方）随机模式的邻居只答「能跳」，标题留空：
+     * 下一首由那份排列决定，按队列顺序猜出来的会是另一首。
+     */
+    shuffleOrder?: readonly number[];
 };
 
 /**
@@ -206,6 +294,7 @@ export const resolvePlaybackNeighbors = ({
     isFmMode,
     isStageActive,
     withMetadata = false,
+    shuffleOrder,
 }: ResolvePlaybackNeighborsParams): PlaybackNeighbors => {
     // 舞台播放时两个 handler 都会直接 return，这里必须同步禁用，否则箭头点了没反应
     if (isStageActive || !currentSong || playQueue.length === 0) {
@@ -226,6 +315,23 @@ export const resolvePlaybackNeighbors = ({
     };
 
     const indexLoopMode = queueLoopMode(loopMode, isFmMode);
+
+    // 随机模式走的是那一份排列，不是队列顺序（见 shuffleOrder 那条）。一轮放完要重洗，
+    // 那一刻的下一首是谁洗之前不知道，所以停在排列最后一首时也只答「能跳」。
+    if (indexLoopMode === 'shuffle') {
+        if (!shuffleOrder || shuffleOrder.length === 0) {
+            return { prev: unknownNeighbor(), next: unknownNeighbor() };
+        }
+        const position = shuffleOrder.indexOf(currentIndex);
+        const prevIndex = prevShuffleQueueIndex(shuffleOrder, currentIndex);
+        const nextIndex = nextShuffleQueueIndex(shuffleOrder, currentIndex);
+        const nextIsUnknown = position < 0 || position >= shuffleOrder.length - 1;
+        return {
+            prev: prevIndex >= 0 ? neighborAt(prevIndex) : blockedNeighbor(),
+            next: nextIsUnknown || nextIndex < 0 ? unknownNeighbor() : neighborAt(nextIndex),
+        };
+    }
+
     const prevIndex = prevQueueIndex(playQueue.length, currentIndex, indexLoopMode);
     const nextIndex = nextQueueIndex(playQueue.length, currentIndex, indexLoopMode);
 

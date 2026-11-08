@@ -1991,7 +1991,7 @@ type FoliumPlaybackState = 'playing' | 'paused' | 'stopped'
 The repeat mode. `all` repeats the queue, `one` the current song.
 
 ```ts
-type FoliumLoopMode = 'off' | 'all' | 'one'
+type FoliumLoopMode = 'off' | 'all' | 'shuffle' | 'one'
 ```
 
 ### FoliumQueueItem

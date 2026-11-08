@@ -3,6 +3,7 @@ import { AudioLines, Disc, SlidersHorizontal, ListMusic, FileAudio, FileText, Ra
 import { locatePlayingSong } from './app/playing-song-locator/playingSongLocator';
 import { useTranslation } from 'react-i18next';
 import { Album, Artist, SongResult, Theme, PlayerState, ReplayGainMode, ThemeMode, VisualizerMode } from '../types';
+import type { StageLoopMode } from '../types';
 import type { LibraryAccountController } from '../library/core/account/account.contract';
 import ControlsTab from './panelTab/ControlsTab';
 import QueueTab from './panelTab/QueueTab';
@@ -50,7 +51,7 @@ type UnifiedPanelPlaybackProps = {
     currentSong: SongResult | null;
     onAlbumSelect: (song: SongResult, album: Album) => void;
     onSelectArtist: (song: SongResult, artist: Artist) => void;
-    loopMode: 'off' | 'all' | 'one';
+    loopMode: StageLoopMode;
     onToggleLoop: () => void;
     onLike: () => void;
     isLiked: boolean;
