@@ -2,18 +2,22 @@ import { describe, expect, it, vi } from 'vitest';
 import {
     buildShuffleOrder,
     hasTrackAfter,
-    nextPlayableShuffleQueueIndex,
+    nextPlayableShuffleIndexWithinRound,
     nextQueueIndex,
-    nextShuffleQueueIndex,
+    nextShuffleIndexWrapping,
     prevQueueIndex,
-    prevShuffleQueueIndex,
+    prevShuffleIndexWrapping,
     queueLoopMode,
     queueOrderSignature,
     resolvePlaybackNeighbors,
+    syncShuffleRound,
+    emptyShuffleRound,
 } from '../../../src/utils/playbackNeighbors';
+import { externalQueueSuccessors } from '../../../src/services/onlineMusic/externalQueue';
 import { loopModeIcon, loopModeLabelName } from '../../../src/components/shared/loopModeDisplay';
 import { Repeat, Repeat1, RepeatOff, Shuffle } from 'lucide-react';
 import { useAudioSettingsStore } from '../../../src/stores/useAudioSettingsStore';
+import { getPlaybackSongKey } from '../../../src/utils/appPlaybackGuards';
 import type { SongResult, StageLoopMode } from '../../../src/types';
 
 // test/unit/playback/shuffleMode.test.ts
@@ -55,24 +59,25 @@ describe('buildShuffleOrder', () => {
 describe('排列里的上一首 / 下一首', () => {
     const order = [3, 0, 4, 1, 2];
 
+    // 两个名字故意分得开：Wrapping 会绕圈，WithinRound 到这一轮末尾就停，语义相反。
     it('下一首是排列里的下一个', () => {
-        expect(nextShuffleQueueIndex(order, 3)).toBe(0);
-        expect(nextShuffleQueueIndex(order, 0)).toBe(4);
+        expect(nextShuffleIndexWrapping(order, 3)).toBe(0);
+        expect(nextShuffleIndexWrapping(order, 0)).toBe(4);
     });
 
     it('走到排列末尾绕回排列开头（随机模式一直往下放）', () => {
-        expect(nextShuffleQueueIndex(order, 2)).toBe(3);
+        expect(nextShuffleIndexWrapping(order, 2)).toBe(3);
     });
 
-    it('上一首回到刚放过的下一首，不是临时再抽一个', () => {
-        expect(prevShuffleQueueIndex(order, 0)).toBe(3);
-        expect(prevShuffleQueueIndex(order, 2)).toBe(1);
+    it('位置式回退只是本轮没有历史时的兜底，它会绕到排列末位', () => {
+        expect(prevShuffleIndexWrapping(order, 0)).toBe(3);
+        expect(prevShuffleIndexWrapping(order, 2)).toBe(1);
     });
 
     it('当前曲不在排列里时从排列开头/末尾接上', () => {
-        expect(nextShuffleQueueIndex(order, 9)).toBe(3);
-        expect(prevShuffleQueueIndex(order, 9)).toBe(2);
-        expect(nextShuffleQueueIndex([], 9)).toBe(-1);
+        expect(nextShuffleIndexWrapping(order, 9)).toBe(3);
+        expect(prevShuffleIndexWrapping(order, 9)).toBe(2);
+        expect(nextShuffleIndexWrapping([], 9)).toBe(-1);
     });
 });
 
@@ -82,16 +87,16 @@ describe('随机模式下跳过不能播的', () => {
     it('按排列往后找第一首能播的', () => {
         const order = [2, 0, 3, 1];
         const unplayable = new Set(['song 0']);
-        expect(nextPlayableShuffleQueueIndex(queue, order, 2, item => !unplayable.has(item.name))).toBe(3);
+        expect(nextPlayableShuffleIndexWithinRound(queue, order, 2, item => !unplayable.has(item.name))).toBe(3);
     });
 
     it('这一轮全都不能播时没有下一首', () => {
         const order = [2, 0, 3, 1];
-        expect(nextPlayableShuffleQueueIndex(queue, order, 2, () => false)).toBe(-1);
+        expect(nextPlayableShuffleIndexWithinRound(queue, order, 2, () => false)).toBe(-1);
     });
 
     it('只有一首的队列就是重播它自己（和列表循环一致）', () => {
-        expect(nextPlayableShuffleQueueIndex([song(0)], [0], 0, () => true)).toBe(0);
+        expect(nextPlayableShuffleIndexWithinRound([song(0)], [0], 0, () => true)).toBe(0);
     });
 });
 
@@ -114,7 +119,7 @@ describe('随机模式不改变别的三态', () => {
         expect(queueLoopMode('shuffle', false)).toBe('shuffle');
     });
 
-    it('随机模式的邻居只答能不能跳，不编造标题', () => {
+    it('随机模式的邻居：有排列就照排列答，没有排列只答能不能跳、不编造标题', () => {
         const queue = [song(0), song(1), song(2)];
         const withoutOrder = resolvePlaybackNeighbors({
             playQueue: queue,
@@ -131,10 +136,23 @@ describe('随机模式不改变别的三态', () => {
             loopMode: 'shuffle',
             isFmMode: false,
             isStageActive: false,
-            shuffleOrder: [1, 2, 0],
+            shuffleRound: { order: [1, 2, 0], history: [] },
         });
         expect(withOrder.next.title).toBe('song 2');
         expect(withOrder.prev.title).toBe('song 0');
+        // 有历史时上一首跟着历史走（本轮刚放过那首），不是排列末位
+        const withHistory = resolvePlaybackNeighbors({
+            playQueue: queue,
+            currentSong: queue[1],
+            loopMode: 'shuffle',
+            isFmMode: false,
+            isStageActive: false,
+            shuffleRound: {
+                order: [1, 2, 0],
+                history: [{ key: getPlaybackSongKey(song(2)), index: 2 }, { key: getPlaybackSongKey(song(1)), index: 1 }],
+            },
+        });
+        expect(withHistory.prev.title).toBe('song 2');
     });
 });
 
@@ -144,6 +162,26 @@ describe('队列被改动时作废排列', () => {
         expect(queueOrderSignature(a)).toBe(queueOrderSignature([song(0), song(1), song(2)]));
         expect(queueOrderSignature(a)).not.toBe(queueOrderSignature([song(0), song(2), song(1)]));
         expect(queueOrderSignature(a)).not.toBe(queueOrderSignature([song(0), song(1)]));
+    });
+
+    // 控制器那一侧的胶水（何时洗、何时重洗、上一首从哪儿弹）在 shuffleRound.test.ts 里，这里只钉签名这一半。
+    it('改过之后重洗的是本轮剩余，历史与当前位置不动', () => {
+        const queue = [song(0), song(1), song(2)];
+        const round = syncShuffleRound(emptyShuffleRound(), queue, queue[1], () => 0.5);
+        const edited = [song(9), ...queue];
+        const synced = syncShuffleRound(round, edited, edited[2], () => 0.5);
+        expect(synced.order[0]).toBe(2);
+        expect(synced.history.map(entry => entry.key)).toContain(getPlaybackSongKey(song(1)));
+    });
+});
+
+describe('外部播放器不按自然顺序预接', () => {
+    it('随机和单曲循环一样什么也不交给对方播放器', () => {
+        const queue = [song(0), song(1), song(2)];
+        expect(externalQueueSuccessors(queue[0], queue, 'off', false)).toEqual([queue[1], queue[2]]);
+        expect(externalQueueSuccessors(queue[0], queue, 'one', false)).toEqual([]);
+        // 随机模式下下一首是这一轮排列里的，交给对方就是另一首
+        expect(externalQueueSuccessors(queue[0], queue, 'shuffle', false)).toEqual([]);
     });
 });
 

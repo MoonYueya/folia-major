@@ -30,7 +30,7 @@ import { useAutomixSettingsStore } from '../stores/useAutomixSettingsStore';
 import { useAudioSettingsStore } from '../stores/useAudioSettingsStore';
 import { onlineFailureOf } from './onlineMusic/failure/onlineFailureCase';
 import { noteOnlineRequestCooldown, onlineRequestCooldown } from './onlineMusic/failure/onlineRequestCooldown';
-import { usePlaybackStore } from '../stores/usePlaybackStore';
+import { readShuffleRound, usePlaybackStore } from '../stores/usePlaybackStore';
 import { getExternalSong, isExternalPlaybackReadyForPrefetch, subscribeExternalPlayback } from './onlineMusic/externalPlayback';
 
 // Prefetch configuration
@@ -579,6 +579,7 @@ export const prefetchNearbySongs = async (
         currentSong,
         useAudioSettingsStore.getState().loopMode,
         usePlaybackStore.getState().isFmMode,
+        readShuffleRound(),
     );
     analysisScopeSongs = nextSong ? [currentSong, nextSong] : [currentSong];
     setAnalysisScope(analysisScopeSongs);

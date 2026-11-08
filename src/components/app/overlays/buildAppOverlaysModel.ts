@@ -10,7 +10,7 @@ import type { SongResult, UnifiedSong, LyricData, StageLoopMode } from '../../..
 import { resolvePlaybackNeighbors } from '../../../utils/playbackNeighbors';
 import { getPlaybackSongKey } from '../../../utils/appPlaybackGuards';
 import { getSongArtistLabel } from '../../../services/onlineMusic/songMetadata';
-import { setPlayerState } from '../../../stores/usePlaybackStore';
+import { readShuffleRound, setPlayerState } from '../../../stores/usePlaybackStore';
 import { locatePlayingSongOnWall } from '../lattice/wallLocate';
 import { setIsDevDebugOverlayVisible, setIsMemoryMonitorVisible } from '../../../stores/useAppChromeStore';
 import type { SlotContextFromApp } from '../../FloatingPlayerControls';
@@ -304,12 +304,14 @@ export const buildAppOverlaysModel = ({
             slotContext: playerControlSlotContext,
             onCommitBottomBarOffset: onCommitPlayerBottomBarOffset,
             trackNavigation: ((): FloatingControlsProps['trackNavigation'] => {
+                // 随机模式下浮动播放条的上一首/下一首也得是真会播的那两首，标题才不是空的。
                 const neighbors = resolvePlaybackNeighbors({
                     playQueue,
                     currentSong,
                     loopMode: effectiveLoopMode,
                     isFmMode,
                     isStageActive: isNowPlayingStageActive,
+                    shuffleRound: readShuffleRound(),
                 });
 
                 return {

@@ -26,7 +26,7 @@ import { buildRemoteQueueItems, isRemoteQueueCommand } from './remoteQueueFeed';
 import { runTransportButtonAction } from './useTransportCommandRefs';
 import i18n from '../../../../i18n/config';
 import { useStableActionSurface } from '../../../../hooks/useStableCallbacks';
-import { selectDisplayCoverUrl, selectDisplayDuration, selectDisplayLyrics, selectDisplayPlayerState, selectDisplaySong, usePlaybackStore } from '../../../../stores/usePlaybackStore';
+import { readShuffleRound, selectDisplayCoverUrl, selectDisplayDuration, selectDisplayLyrics, selectDisplayPlayerState, selectDisplaySong, usePlaybackStore } from '../../../../stores/usePlaybackStore';
 import { useAppChromeStore } from '../../../../stores/useAppChromeStore';
 import { useThemeSettingsStore } from '../../../../stores/useThemeSettingsStore';
 import { usePlayerChromeSettingsStore } from '../../../../stores/usePlayerChromeSettingsStore';
@@ -263,6 +263,7 @@ export const useElectronPlaybackBridge = ({
             : duration;
 
         return buildPlaybackSyncBridgeModel({
+            shuffleRound: readShuffleRound(),
             activePlaybackContext,
             currentSong,
             playQueue,
