@@ -4,6 +4,7 @@ import { PlayerState, type ActiveLocalLyricsSource, type LyricData, type Playbac
 import { createCoverUrlResolver } from '../components/app/playback/createCoverUrlResolver';
 import type { AutomixTransitionEnd } from '../services/automix/automixSession';
 import type { PlaybackRoute } from '../types/hifi';
+import type { ShuffleHistoryEntry, ShuffleRoundState } from '../utils/playbackNeighbors';
 
 /** The now-playing picture, frozen for as long as a transition is running. */
 export interface TransitionDisplay {
@@ -85,6 +86,31 @@ type PlaybackStoreState = {
      * process. Not persisted: every start of a song decides it again.
      */
     playbackRoute: PlaybackRoute;
+    // ---- one round of shuffle ----
+    //
+    // The order lives here and nowhere else, so every consumer of 「下一首是谁」 reads the same copy: automix
+    // (which blended into nothing and logged a queue end that was not there), the prefetcher (which cold-started
+    // on every shuffle change), HiFi's gapless preload (which had to switch itself off) and the floating
+    // player's neighbours (which had no title to show). It used to be a ref inside
+    // usePlaybackQueueController, where nothing else could reach it. The song-change handlers there are the only
+    // writers; everything else reads it through readShuffleRound.
+    /**
+     * This round's order over queue indices, the track playing now first. null when shuffle is off, just left,
+     * or nothing is queued.
+     */
+    shuffleOrder: number[] | null;
+    /** queueOrderSignature at the time that order was built: once the queue changes, the round's rest is redrawn. */
+    shuffleSignature: string | null;
+    /**
+     * The positions this round has played, newest last. 「上一首」 pops from here: the order's last entry is a song
+     * this round has NOT played, and going there is exactly what it must not do.
+     */
+    shuffleHistory: ShuffleHistoryEntry[];
+    /**
+     * Writes the round as one update, so the order, its signature and the history cannot drift apart; null
+     * clears all three (leaving shuffle).
+     */
+    setShuffleRound: (round: ShuffleRoundState | null) => void;
 
     setCurrentSong: SetState<SongResult | null>;
     setAudioSrc: SetState<string | null>;
@@ -143,6 +169,9 @@ export const usePlaybackStore = create<PlaybackStoreState>((set, get) => ({
     transitionDisplay: null,
     transitionEnd: null,
     playbackRoute: 'web',
+    shuffleOrder: null,
+    shuffleSignature: null,
+    shuffleHistory: [],
 
     setCurrentSong: (next) => set({ currentSong: resolve(next, get().currentSong) }),
     setAudioSrc: (next) => set({ audioSrc: resolve(next, get().audioSrc) }),
@@ -168,6 +197,9 @@ export const usePlaybackStore = create<PlaybackStoreState>((set, get) => ({
     setPlaybackRoute: (next) => set({ playbackRoute: resolve(next, get().playbackRoute) }),
     releaseTransitionDisplay: (end) => set({ transitionDisplay: null, transitionEnd: end }),
     replacePlayQueue: (queue, isFmMode) => set({ playQueue: queue, isFmMode }),
+    setShuffleRound: (round) => set(round === null
+        ? { shuffleOrder: null, shuffleSignature: null, shuffleHistory: [] }
+        : { shuffleOrder: round.order, shuffleSignature: round.signature, shuffleHistory: round.history }),
 }));
 
 // ---- module-level setters ----
@@ -197,6 +229,21 @@ export const setLyricTimelineOffsetMs: SetState<number> = (next) => usePlaybackS
 export const setTransitionDisplay: SetState<TransitionDisplay | null> = (next) => usePlaybackStore.getState().setTransitionDisplay(next);
 export const setPlaybackRoute: SetState<PlaybackRoute> = (next) => usePlaybackStore.getState().setPlaybackRoute(next);
 export const replacePlayQueue = (queue: SongResult[], isFmMode: boolean) => usePlaybackStore.getState().replacePlayQueue(queue, isFmMode);
+export const setShuffleRound = (round: ShuffleRoundState | null) => usePlaybackStore.getState().setShuffleRound(round);
+
+/**
+ * One round of shuffle as its readers need it: the order and the history read in one go, so they cannot belong
+ * to different rounds. Nothing is written through this shape - the handlers build a ShuffleRoundState and call
+ * setShuffleRound.
+ */
+export const readShuffleRound = (): ShuffleRoundState => {
+    const state = usePlaybackStore.getState();
+    return {
+        order: state.shuffleOrder ?? [],
+        signature: state.shuffleSignature ?? '',
+        history: state.shuffleHistory,
+    };
+};
 
 // ---- derived: the cover, and the display layer ----
 

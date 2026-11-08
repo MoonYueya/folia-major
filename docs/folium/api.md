@@ -1988,7 +1988,9 @@ type FoliumPlaybackState = 'playing' | 'paused' | 'stopped'
 
 ### FoliumLoopMode
 
-The repeat mode. `all` repeats the queue, `one` the current song.
+The repeat mode. `off` stops at the queue's end, `all` repeats the queue, `shuffle` plays this round's
+shuffled order (one round at a time, redrawn when it runs out), `one` the current song. In Personal FM the
+queue neither wraps nor shuffles - the station keeps it going - so it behaves as `off` there.
 
 ```ts
 type FoliumLoopMode = 'off' | 'all' | 'shuffle' | 'one'

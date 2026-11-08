@@ -661,7 +661,8 @@ CSS 放进 `@layer folium-mods`（在 Tailwind 各层之后声明），不用 `!
 - `getVolume()` 返回 `{ volume, muted }`，`volume` 在 0–1，静音开关独立于音量。`setVolume(volume)` 夹到 0–1，和宿主的音量滑块一样，
   不动静音开关；每次调用都会保存，所以只设最终值，不要拿它做渐变。`setMuted(muted)` 是设值而不是切换，两边同时操作不会互相抵消。
   参数不是有限数 / 布尔值时抛错。
-- `getLoopMode()` / `setLoopMode(mode)`：`'off' | 'all' | 'one'`。设成新值时宿主像点自己的循环按钮一样弹提示；设成当前值什么都不做；
+- `getLoopMode()` / `setLoopMode(mode)`：`'off' | 'all' | 'shuffle' | 'one'`。`shuffle` 是随机播放：这一轮按洗好的排列走，
+  一轮放完再洗一份；私人 FM 里它和 `off` 一样（队列由电台续上，不绕回也不洗）。设成新值时宿主像点自己的循环按钮一样弹提示；设成当前值什么都不做；
   未知值抛错。外部 Stage 播放时也能设，循环模式是持久的偏好。
 - `getQueue({ offset, limit })` 返回队列的一页 `{ items, length, currentIndex, kind, version }`：
   - `items` 是 `{ song, index }[]`，`index` 是在整个队列里的位置，`version` 一变就过期（见 `playback.queueChanged`）。

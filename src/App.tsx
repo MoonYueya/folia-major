@@ -149,6 +149,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { clampMediaVolume, toSafeRemoteUrl } from './utils/appPlaybackHelpers';
 import { hasLoopedToStart } from './services/playedTrackCache';
 import { getOnlineProviderIdForSong, isLocalPlaybackSong, isNavidromePlaybackSong, isStagePlaybackSong } from './utils/appPlaybackGuards';
+import { queueLoopMode } from './utils/playbackNeighbors';
 import { writeLyricOffset } from './utils/lyrics/lyricOffsetMemory';
 import { FALLBACK_AI_DUAL_THEME } from './services/themeSanitizer';
 import { BASE_DUAL_THEME, DAYLIGHT_THEME, DEFAULT_THEME } from './services/baseThemes';
@@ -567,7 +568,10 @@ export default function App() {
     // control below keeps editing the per-song value alone.
     const effectiveLyricTimelineOffsetMs = lyricTimelineOffsetMs + globalLyricTimelineOffsetMs;
 
-    const effectiveLoopMode: StageLoopMode = loopMode;
+    // Personal FM neither wraps to the queue's head nor back to its tail (it fetches new tracks at the end), so
+    // inside FM the mode everything reads is 不循环 - the same rule the song-change handlers apply. Without it the
+    // loop button kept showing 「随机播放」 in FM while shuffle could not do anything there.
+    const effectiveLoopMode: StageLoopMode = queueLoopMode(loopMode, isFmMode);
 
     const getTargetPlaybackVolume = useCallback(() => (isMuted ? 0 : volume), [isMuted, volume]);
 
@@ -1239,6 +1243,14 @@ export default function App() {
         setIsPanelOpen(true);
     }, []);
 
+    // 这一轮随机的排列：卡片报的下一首得是 handleNextTrack 真会切的那一首，所以它一变就重算。
+    const shuffleOrderForNextUp = usePlaybackStore(state => state.shuffleOrder);
+    const shuffleHistoryForNextUp = usePlaybackStore(state => state.shuffleHistory);
+    const shuffleRoundForNextUp = useMemo(
+        () => ({ order: shuffleOrderForNextUp ?? [], history: shuffleHistoryForNextUp }),
+        [shuffleOrderForNextUp, shuffleHistoryForNextUp],
+    );
+
     /**
      * The queue track a plain track-end would advance to, or null when nothing resolvable.
      * Mirrors handleNextTrack's index rules so the preview is always the track that will actually play.
@@ -1250,7 +1262,8 @@ export default function App() {
         isFmMode,
         isStageActive: isNowPlayingStageActive,
         fallbackToQueueHead: true,
-    }), [playQueue, currentSong, effectiveLoopMode, isFmMode, isNowPlayingStageActive]);
+        shuffleRound: shuffleRoundForNextUp,
+    }), [playQueue, currentSong, effectiveLoopMode, isFmMode, isNowPlayingStageActive, shuffleRoundForNextUp]);
 
     /**
      * The track a running blend is bringing in: the queue successor of the DISPLAYED song.
@@ -1266,7 +1279,8 @@ export default function App() {
         loopMode: effectiveLoopMode,
         isFmMode,
         isStageActive: isNowPlayingStageActive,
-    }) : null), [isShowingTail, displaySong, playQueue, effectiveLoopMode, isFmMode, isNowPlayingStageActive]);
+        shuffleRound: shuffleRoundForNextUp,
+    }) : null), [isShowingTail, displaySong, playQueue, effectiveLoopMode, isFmMode, isNowPlayingStageActive, shuffleRoundForNextUp]);
 
     /** True while the card previews the next track (plain track-end countdown, not the blend). */
     const [countdownActive, setCountdownActive] = useState(false);

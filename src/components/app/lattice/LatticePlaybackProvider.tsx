@@ -6,6 +6,7 @@ import type { CommandPalettePlaybackContext } from '../../command-palette/types'
 import type { PlayerControlSlotContext } from '../../floating-player/playerControlSlotActions';
 import { resolveLikeAvailability } from '../../../utils/playerLikeAvailability';
 import { canShuffleQueue, resolvePlaybackNeighbors } from '../../../utils/playbackNeighbors';
+import { readShuffleRound } from '../../../stores/usePlaybackStore';
 import { resolveLyricSeekMediaTime } from '../../../utils/lyrics/lyricSeekTime';
 
 // src/components/app/lattice/LatticePlaybackProvider.tsx
@@ -53,7 +54,8 @@ export default function LatticePlaybackProvider({ actions, currentSong, queue, l
     };
     const context = useMemo<PlayerControlSlotContext>(() => {
         const neighbors = resolvePlaybackNeighbors({ playQueue: queue, currentSong, loopMode: actions.loopMode,
-            isFmMode: actions.playback.isFmMode, isStageActive: Boolean(actions.isStageActive) });
+            isFmMode: actions.playback.isFmMode, isStageActive: Boolean(actions.isStageActive),
+            shuffleRound: readShuffleRound() });
         return {
             loopMode: actions.loopMode,
             onToggleLoop: actions.playback.toggleLoop,
