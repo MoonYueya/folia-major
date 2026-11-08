@@ -3,7 +3,7 @@ import {
     buildShuffleOrder,
     emptyShuffleRound,
     nextPlayableShuffleIndexWithinRound,
-    prevShuffleQueueIndex,
+    prevShuffleIndexFromRound,
     queueOrderSignature,
     resolveTransitionTarget,
     shuffleCurrentQueueIndex,
@@ -56,13 +56,13 @@ describe('进入随机模式时的第一轮', () => {
         expect(syncShuffleRound(round, queue, queue[1], fixed(FIXED_RANDOM))).toBe(round);
     });
 
-    // H-2 ①：位置式的上一首是排列末位，也就是这一轮还没放过的一首。刚进随机时按上一首绝不能跳到那儿。
+    // 位置式的上一首是排列末位，而末位是这一轮还没放过的一首。刚进随机时按上一首绝不能跳到那儿。
     it('本轮只有此刻这一首时上一首没有去处，不会跳到这一轮没放过的末位', () => {
         const queue = queueOf('a', 'b', 'c', 'd');
         const round = syncShuffleRound(emptyShuffleRound(), queue, queue[1], fixed(FIXED_RANDOM));
         expect(stepBackShuffleRound(round, queue, queue[1], fixed(FIXED_RANDOM)).index).toBe(-1);
         // 老规则（只按排列位置）在这里给的是排列末位 —— 正是那次审查抓到的跳转
-        expect(prevShuffleQueueIndex(queue, round.order, [], 1)).toBe(round.order[round.order.length - 1]);
+        expect(prevShuffleIndexFromRound(queue, round.order, [], 1)).toBe(round.order[round.order.length - 1]);
     });
 });
 
@@ -81,8 +81,9 @@ describe('下一首与重洗', () => {
         expect(new Set(step.round.order)).toEqual(new Set([0, 1, 2, 3]));
         expect(step.index).toBe(step.round.order[1]);
         expect(step.round.signature).toBe(queueOrderSignature(queue));
-        // 一轮放完重洗不会把历史清掉：上一首还得回到这一轮真正放过的那些
-        expect(step.round.history.map(entry => entry.index).slice(0, 4)).toEqual([2, 0, 1, 3]);
+        // 一轮放完重洗不会把历史清掉：上一首还得回到这一轮真正放过的那些，
+        // 而这一轮新选中的那首压在最后。整条历史一起比，多推一条就会红。
+        expect(step.round.history.map(entry => entry.index)).toEqual([2, 0, 1, 3, step.round.order[1]]);
     });
 
     it('这一轮里一首能播的都没有时给出 -1，不绕回本轮开头', () => {
@@ -90,10 +91,19 @@ describe('下一首与重洗', () => {
         const round = roundOf(queue, [0, 1, 2], [0]);
         expect(stepShuffleRound(round, queue, queue[0], () => false, fixed(FIXED_RANDOM)).index).toBe(-1);
     });
+
+    it('没得播时把这一轮原样递回来，调用方据此不写 store', () => {
+        const queue = queueOf('a', 'b', 'c');
+        const round = roundOf(queue, [0, 1, 2], [0]);
+        // 队列没变、排列里还有位置、只是下一首不能播：这一轮没有任何变化
+        expect(stepShuffleRound(round, queue, queue[0], () => false, fixed(FIXED_RANDOM)).round).toBe(round);
+        // 上一首在这份历史里没有更早的歌，同样不产生新的一轮
+        expect(stepBackShuffleRound(round, queue, queue[0], fixed(FIXED_RANDOM)).round).toBe(round);
+    });
 });
 
 describe('上一首', () => {
-    // H-2 ②：队列被编辑过（这里在前面插了一首，下标全变）之后，上一首仍要回到刚放过那首。
+    // 队列被编辑过（这里在前面插了一首，下标全变）之后，上一首仍要回到刚放过那首。
     it('队列编辑后下标错位，上一首还是刚放过那首', () => {
         const queue = queueOf('a', 'b', 'c', 'd');
         const played = stepShuffleRound(roundOf(queue, [0, 1, 2, 3], [0]), queue, queue[0], () => true, fixed(FIXED_RANDOM));
@@ -103,7 +113,7 @@ describe('上一首', () => {
         expect(edited[step.index].name).toBe('song a');
     });
 
-    // H-2 ③：手动点了队列里另一首之后，上一首是点之前那首（历史顶部是它，不是被点的那首）。
+    // 手动点了队列里另一首之后，上一首是点之前那首（历史顶部是它，不是被点的那首）。
     it('手动点队列里另一首再按上一首，回到点之前那首', () => {
         const queue = queueOf('a', 'b', 'c', 'd');
         const round = roundOf(queue, [0, 1, 2, 3], [0, 1]);
@@ -145,7 +155,7 @@ describe('队列被改动', () => {
 });
 
 describe('同一首在队列里排了两次', () => {
-    // M-4：按 key 反查会拿到前一个副本，播到第二个副本之后排列位置就错位了。
+    // 按 key 反查会拿到前一个副本，播到第二个副本之后排列位置就错位了。
     it('播到第二个副本时按排列接着走，不会退回第一个副本', () => {
         const queue = [song('a'), song('b'), song('a')];
         const round = roundOf(queue, [0, 2, 1], [0, 2]);
@@ -161,6 +171,9 @@ describe('过渡目标的原因', () => {
             .toEqual({ song: null, reason: 'shuffle-order-unknown' });
         expect(resolveTransitionTarget(queue, queue[0], 'shuffle', false, { order: [], history: [] }).reason)
             .toBe('shuffle-order-unknown');
+        // 有排列、只是排列里没有这一首：是另一回事，日志不该让人去查「为什么没有排列」
+        expect(resolveTransitionTarget(queue, queue[1], 'shuffle', false, { order: [0, 2], history: [] }).reason)
+            .toBe('shuffle-current-not-in-order');
     });
 
     it('随机模式下按这一轮的排列给下一首，走到末尾则说是这一轮放完了', () => {

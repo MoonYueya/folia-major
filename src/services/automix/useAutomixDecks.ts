@@ -65,7 +65,6 @@ export const shouldAbortTransitionOnPause = (state: PlayerState, pauseFadePendin
     isPausedByListener(state) && !pauseFadePending
 );
 
-/** A position in a track as a log line wants it: `3:12.40 (192.40s)`. */
 /**
  * What the log says when a transition has no track to go into. The reasons are kept apart because they are
  * different situations: a shuffle round with no order to read is not a queue that ended, and telling them
@@ -75,6 +74,8 @@ const describeNoTransition = (reason: TransitionTargetReason): string => {
     switch (reason) {
         case 'shuffle-order-unknown':
             return 'shuffle is on but this round has no order to read, so there is nothing to blend into yet';
+        case 'shuffle-current-not-in-order':
+            return 'this shuffle round has an order, but the track playing is not in it';
         case 'shuffle-round-end':
             return 'this shuffle round is played out, the order is redrawn when the track changes';
         case 'fm-next-unfetched':
@@ -86,6 +87,7 @@ const describeNoTransition = (reason: TransitionTargetReason): string => {
     }
 };
 
+/** A position in a track as a log line wants it: `3:12.40 (192.40s)`. */
 const trackClock = (seconds: number): string => {
     // Rounded first, so 59.999 reads 1:00.00 rather than 0:60.00.
     const centis = Math.round(seconds * 100);

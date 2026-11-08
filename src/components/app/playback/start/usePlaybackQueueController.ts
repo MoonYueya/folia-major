@@ -38,13 +38,11 @@ import {
     fmNeedsTopUpAt,
     hasTrackToSkipTo,
     nextPlayableQueueSong, nextPlayableQueueIndex,
-    nextPlayableShuffleIndexWithinRound,
     nextQueueIndex,
     prevQueueIndex,
     queueIndexOf,
     queueLoopMode,
     resolvePlaybackNeighbors,
-    shuffleCurrentQueueIndex,
     stepBackShuffleRound,
     stepShuffleRound,
     syncShuffleRound,
@@ -415,16 +413,26 @@ export function usePlaybackQueueController({
 
     // 失败跳过（「无法播放时自动跳过」那一串）走的是和切歌同一套下标规则：随机模式下顺着这一轮的排列往后找，
     // 否则「这首不能播」会跳到自然顺序的下一首，和用户选的那一态不搭。
-    const getNextPlayableQueueSong = useCallback((queue: SongResult[], song: SongResult, isFm: boolean) => {
+    //
+    // 随机这一步和 handleNextTrack 走的是同一条路（stepShuffleRound），建出来的那一轮要写回 store：
+    // 只在这里算一个下标的话，播的下一首来自一份谁都没保存的排列，随后队列同步的 effect 会用另一个随机数
+    // 再洗一份，用户听到的排列和被记录的不是同一份，上一首/下一首就可能落回这一轮已经放过的歌。
+    // `commitShuffleRound` 区分两处调用：倒计时之前那次只是问「有没有下一首」，那次不写 ——
+    // 写了会在这一轮历史里留下一首没真放过的歌，之后「上一首」正好跳到那儿去。
+    const getNextPlayableQueueSong = useCallback((
+        queue: SongResult[],
+        song: SongResult,
+        isFm: boolean,
+        commitShuffleRound = false,
+    ) => {
         const indexLoopMode = queueLoopMode(loopMode, isFm);
-        const currentIndex = queueIndexOf(queue, song);
         if (indexLoopMode === 'shuffle') {
-            const round = syncShuffleRound(readShuffleRound(), queue, song, Math.random);
-            const currentRoundIndex = shuffleCurrentQueueIndex(queue, song, round.history);
-            const shuffledIndex = nextPlayableShuffleIndexWithinRound(queue, round.order, currentRoundIndex, isQueueSongPlayable);
-            return shuffledIndex >= 0 ? queue[shuffledIndex] : null;
+            const current = readShuffleRound();
+            const step = stepShuffleRound(current, queue, song, isQueueSongPlayable, Math.random);
+            if (commitShuffleRound && step.round !== current) setShuffleRound(step.round);
+            return step.index >= 0 ? queue[step.index] ?? null : null;
         }
-        return nextPlayableQueueSong(queue, currentIndex, indexLoopMode, isQueueSongPlayable);
+        return nextPlayableQueueSong(queue, queueIndexOf(queue, song), indexLoopMode, isQueueSongPlayable);
     }, [loopMode]);
 
     /**
@@ -786,7 +794,8 @@ export function usePlaybackQueueController({
                     // so that edits made meanwhile are not undone.
                     const targetQueue = readClickTimeQueue() ?? newQueue;
                     if (onFmLanding && asFm() && playSongCallIdRef.current === playSongCallId) registerPersonalFmLanding(targetQueue, onFmLanding);
-                    void latestQueueActionsRef.current.playSong(getNextPlayableQueueSong(targetQueue, song, asFm()) ?? nextSong, targetQueue, asFm(), {
+                    // 这一次是真要跳：这一轮排列必须写回 store，被记录的就是被播放的那一份。
+                    void latestQueueActionsRef.current.playSong(getNextPlayableQueueSong(targetQueue, song, asFm(), true) ?? nextSong, targetQueue, asFm(), {
                         ...deferredPlayOptions,
                         unavailableSkipCount: skipCount + 1,
                     });
@@ -1489,15 +1498,17 @@ export function usePlaybackQueueController({
         // 随机模式：下一首是这一轮排列里的下一首；走到排列的最后一首就重洗一份，接着往下放。
         // 私人 FM 进不来这里（queueLoopMode 把 FM 按不循环算），FM 的队列由电台续上。
         if (indexLoopMode === 'shuffle') {
+            const current = readShuffleRound();
             const step = stepShuffleRound(
-                readShuffleRound(),
+                current,
                 playQueue,
                 heldSong ?? options?.fromSong ?? currentSong,
                 isQueueSongPlayable,
                 Math.random,
             );
             // 排列、签名、历史一起写回：别的消费者读到的就是这一次切歌用的那一份。
-            setShuffleRound(step.round);
+            // 什么都没变时（这一轮里一首能播的都没有）不写：zustand 写一次就通知整店的订阅者。
+            if (step.round !== current) setShuffleRound(step.round);
             const shuffledIndex = step.index;
             if (shuffledIndex >= 0) {
                 void playSong(playQueue[shuffledIndex], playQueue, false, {
@@ -1545,8 +1556,10 @@ export function usePlaybackQueueController({
         // 也不按排列位置回退（排列末位是这一轮还没放过的歌），队列在这中间被编辑过也一样回得到它。
         // 本轮还没有更早的歌时什么都不做，和别的模式停在队首时一样。
         if (indexLoopMode === 'shuffle') {
-            const step = stepBackShuffleRound(readShuffleRound(), playQueue, heldSong ?? currentSong, Math.random);
-            setShuffleRound(step.round);
+            const current = readShuffleRound();
+            const step = stepBackShuffleRound(current, playQueue, heldSong ?? currentSong, Math.random);
+            // 本轮没有更早的歌时什么都不写：和别处一样，只在真变化时通知订阅者。
+            if (step.round !== current) setShuffleRound(step.round);
             const previousIndex = step.index;
             if (previousIndex >= 0) {
                 void playSong(playQueue[previousIndex], playQueue, false, {

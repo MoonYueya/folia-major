@@ -6,7 +6,7 @@ import type { CommandPalettePlaybackContext } from '../../command-palette/types'
 import type { PlayerControlSlotContext } from '../../floating-player/playerControlSlotActions';
 import { resolveLikeAvailability } from '../../../utils/playerLikeAvailability';
 import { canShuffleQueue, resolvePlaybackNeighbors } from '../../../utils/playbackNeighbors';
-import { readShuffleRound } from '../../../stores/usePlaybackStore';
+import { usePlaybackStore } from '../../../stores/usePlaybackStore';
 import { resolveLyricSeekMediaTime } from '../../../utils/lyrics/lyricSeekTime';
 
 // src/components/app/lattice/LatticePlaybackProvider.tsx
@@ -52,10 +52,18 @@ export default function LatticePlaybackProvider({ actions, currentSong, queue, l
         });
         if (target !== null) onSeek(target);
     };
+    // 这一轮随机的排列要订阅着读：在 useMemo 体内现读 store 的话，排列变了、歌还没变的那一帧
+    // 上一首/下一首的标题和置灰会停在上一轮（store 在 playSong 之前就写好了）。
+    const shuffleOrder = usePlaybackStore(state => state.shuffleOrder);
+    const shuffleHistory = usePlaybackStore(state => state.shuffleHistory);
+    const shuffleRound = useMemo(
+        () => ({ order: shuffleOrder ?? [], history: shuffleHistory }),
+        [shuffleOrder, shuffleHistory],
+    );
     const context = useMemo<PlayerControlSlotContext>(() => {
         const neighbors = resolvePlaybackNeighbors({ playQueue: queue, currentSong, loopMode: actions.loopMode,
             isFmMode: actions.playback.isFmMode, isStageActive: Boolean(actions.isStageActive),
-            shuffleRound: readShuffleRound() });
+            shuffleRound });
         return {
             loopMode: actions.loopMode,
             onToggleLoop: actions.playback.toggleLoop,
@@ -73,7 +81,7 @@ export default function LatticePlaybackProvider({ actions, currentSong, queue, l
             invokeCommandById: actions.invokeCommandById,
             canInvokeCommandById: actions.canInvokeCommandById,
         };
-    }, [actions, currentSong, lyrics, queue]);
+    }, [actions, currentSong, lyrics, queue, shuffleRound]);
     return <PlaybackContext.Provider value={context}>
         {children}
         {timelineOpen && createPortal(<Suspense fallback={null}>

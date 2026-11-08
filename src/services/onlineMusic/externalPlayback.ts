@@ -1,7 +1,7 @@
 import type { ProviderExternalPlaybackStatus } from '../../types/onlineMusic';
 import type { SongResult } from '../../types';
 import { PlayerState } from '../../types';
-import { usePlaybackStore, setAudioSrc, setDuration, setPlaybackRoute, setPlayerState } from '../../stores/usePlaybackStore';
+import { usePlaybackStore, readShuffleRound, setAudioSrc, setDuration, setPlaybackRoute, setPlayerState } from '../../stores/usePlaybackStore';
 import { getOnlineProviderIdForSong, getPlaybackSongKey } from '../../utils/appPlaybackGuards';
 import { createExternalClock } from './externalClock';
 import { setExternalRouteMedia } from '../hifi/hifiMediaShim';
@@ -242,7 +242,8 @@ const refreshPreparedQueue = () => {
         console.warn(`[ExternalPlayback] the start has not landed in ${PREPARED_QUEUE_START_LIMIT_MS / 1000}s: the prepared queue is written again`, { attempt: startPendingAttempt });
     }
     const state = usePlaybackStore.getState();
-    const next = externalQueueSuccessors(current.song, state.playQueue, useAudioSettingsStore.getState().loopMode, state.isFmMode, omni.canPlaySong, PREPARED_TAIL);
+    // 这一轮随机的排列由这里读好再传进去：externalQueue 是 utils，自己不许碰 store。
+    const next = externalQueueSuccessors(current.song, state.playQueue, useAudioSettingsStore.getState().loopMode, state.isFmMode, omni.canPlaySong, PREPARED_TAIL, readShuffleRound());
     const key = JSON.stringify(next.map(getPlaybackSongKey));
     if (current.preparedQueueKey === key) return;
     current.preparedQueueKey = key;

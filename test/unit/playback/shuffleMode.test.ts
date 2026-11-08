@@ -175,13 +175,35 @@ describe('队列被改动时作废排列', () => {
     });
 });
 
-describe('外部播放器不按自然顺序预接', () => {
-    it('随机和单曲循环一样什么也不交给对方播放器', () => {
+describe('外部播放器按这一轮的排列预接', () => {
+    it('队列顺序与单曲循环的规矩没变：顺序继任者照给，单曲循环什么都不给', () => {
         const queue = [song(0), song(1), song(2)];
         expect(externalQueueSuccessors(queue[0], queue, 'off', false)).toEqual([queue[1], queue[2]]);
         expect(externalQueueSuccessors(queue[0], queue, 'one', false)).toEqual([]);
-        // 随机模式下下一首是这一轮排列里的，交给对方就是另一首
+    });
+
+    it('随机按排列预接，不接队列里的自然继任者', () => {
+        const queue = [song(0), song(1), song(2)];
+        const round = { order: [0, 2, 1], history: [{ key: getPlaybackSongKey(song(0)), index: 0 }] };
+        // 队列里的下一首是 1，这一轮接下来放的是 2
+        expect(externalQueueSuccessors(queue[0], queue, 'shuffle', false, undefined, 2, round))
+            .toEqual([queue[2], queue[1]]);
+    });
+
+    it('拿不到排列时什么都不预接（遥控窗口、任务栏给不了它）', () => {
+        const queue = [song(0), song(1), song(2)];
         expect(externalQueueSuccessors(queue[0], queue, 'shuffle', false)).toEqual([]);
+        expect(externalQueueSuccessors(queue[0], queue, 'shuffle', false, undefined, 2, { order: [], history: [] }))
+            .toEqual([]);
+    });
+
+    it('排列里那首不属于对方平台时停下，不跳过它去接再往后的一首', () => {
+        const queue = [song(0), song(1), song(2)];
+        const other: SongResult[] = queue.map((item, index) => (index === 2
+            ? { ...item, sourceRef: { kind: 'online' as const, providerId: 'qq', mediaId: '2' } }
+            : item));
+        const round = { order: [0, 2, 1], history: [] };
+        expect(externalQueueSuccessors(other[0], other, 'shuffle', false, undefined, 2, round)).toEqual([]);
     });
 });
 
