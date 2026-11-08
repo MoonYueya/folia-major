@@ -17,6 +17,11 @@ export type { PlayerControlSlotActionId };
 /** 槽位渲染所需的全部输入；由 buildAppOverlaysModel 组装，全部来自已有 handler。 */
 export type PlayerControlSlotContext = {
     loopMode: StageLoopMode;
+    /**
+     * 私人 FM 里循环模式不生效，循环按钮置灰：那儿的播放一律按不循环算。
+     * 可选，是因为调试探针和 i18n 测试只拼出渲染需要的字段，它们不关心 FM。
+     */
+    isFmMode?: boolean;
     onToggleLoop: () => void;
     onPrev: () => void;
     onNext: () => void;
@@ -106,7 +111,7 @@ export const resolvePlayerControlSlot = (
                 icon: loopModeIcon(context.loopMode),
                 filled: false,
                 active: context.loopMode !== 'off',
-                disabled: false,
+                disabled: Boolean(context.isFmMode),
                 onActivate: context.onToggleLoop,
                 labelKey: `player.${loopModeLabelName(context.loopMode)}`,
             };

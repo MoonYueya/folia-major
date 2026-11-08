@@ -1136,6 +1136,7 @@ export default {
     "stageTrackPillOpenSongCard": "Mở thẻ bài hát",
     "loopingOn": "Bật lặp lại",
     "loopOff": "Tắt lặp lại",
+    "loopUnavailableInFm": "FM cá nhân không có chế độ lặp lại",
     "toggleBackground": "Bật/tắt nền",
     "importFile": "Nhập tệp",
     "changeFile": "Đổi tệp",

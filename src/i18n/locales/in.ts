@@ -1136,6 +1136,7 @@ export default {
     "stageTrackPillOpenSongCard": "Buka kartu lagu",
     "loopingOn": "Loop Aktif",
     "loopOff": "Loop Mati",
+    "loopUnavailableInFm": "FM pribadi tidak punya mode pengulangan",
     "toggleBackground": "Alihkan Latar Belakang",
     "importFile": "Impor File",
     "changeFile": "Ganti File",

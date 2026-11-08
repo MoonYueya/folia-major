@@ -1136,6 +1136,7 @@ export default {
     "stageTrackPillOpenSongCard": "Open the song card",
     "loopingOn": "Looping On",
     "loopOff": "Loop Off",
+    "loopUnavailableInFm": "Personal FM has no loop mode",
     "toggleBackground": "Toggle Background",
     "importFile": "Import File",
     "changeFile": "Change File",
