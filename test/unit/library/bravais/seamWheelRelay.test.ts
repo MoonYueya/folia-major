@@ -19,11 +19,11 @@ const buildSeam = () => {
                         <div class="bravais-seam-body">
                             <div class="bravais-seam-row is-full">
                                 <button type="button" class="bravais-seam-title-area" id="title"><span>望</span></button>
-                                <div class="bravais-seam-row-info" id="info">
+                                <div class="bravais-seam-row-info" id="info" data-wheel-scroll-region>
                                     <span id="meta">308 首</span>
                                     <button type="button" class="bravais-chrome-button" id="play">播放全部</button>
                                 </div>
-                                <div class="bravais-seam-blurb is-open" id="blurb">一段很长的简介</div>
+                                <div class="bravais-seam-blurb is-open" id="blurb" data-wheel-scroll-region>一段很长的简介</div>
                             </div>
                         </div>
                     </div>
@@ -60,6 +60,15 @@ const wheel = (target: Element, init: WheelEventInit = { deltaY: 120 }) => {
     const event = new WheelEvent('wheel', { bubbles: true, cancelable: true, ...init });
     const notCancelled = target.dispatchEvent(event);
     return { event, defaultPrevented: !notCancelled };
+};
+
+/** 这一小段里读了多少次样式（缝的宽度每帧都在被写，读布局越少越好）。 */
+const countStyleReads = (run: () => void) => {
+    const spy = vi.spyOn(window, 'getComputedStyle');
+    run();
+    const reads = spy.mock.calls.length;
+    spy.mockRestore();
+    return reads;
 };
 
 /** 手势锁的时长（SEAM_WHEEL_LATCH_MS = 160）之外。 */
@@ -240,6 +249,33 @@ describe('缝里的滚轮接到墙上', () => {
         for (let index = 0; index < 5; index += 1) wheel(blurb);
         expect(readStyle.mock.calls.length).toBe(afterFirst);
         readStyle.mockRestore();
+        detach();
+    });
+
+    it('带标记的滚动容器命中后只在它这一层算边界（目标到它之间不再逐层读样式）', () => {
+        const { root, info, meta } = buildSeam();
+        stubScroll(info, 'y', { content: 420, size: 240, position: 0 });
+        const forward = wallHandler();
+        const detach = attachSeamWheelRelay(root, forward);
+        // meta 是信息条里的一个 span：标记命中就直接看信息条，span 自己不必再问一次「你是不是滚动容器」。
+        expect(countStyleReads(() => { wheel(meta); })).toBe(1);
+        expect(forward).not.toHaveBeenCalled();
+        detach();
+    });
+
+    it('标记的容器装得下时退回通用遍历：里面没标记的滚动容器照样自己滚', () => {
+        const { root, info } = buildSeam();
+        // 标记的这层装得下（滚不动），但它里面还有一个没标记、真能滚的容器：通用路径必须还能找到它，
+        // 不能因为「命中过标记」就一路交给墙（列表面板里 react-window 的外层就是这种没标记的滚动容器）。
+        stubScroll(info, 'y', { content: 120, size: 120 });
+        const inner = document.createElement('div');
+        inner.innerHTML = '<span id="inner-span">第一首</span>';
+        info.appendChild(inner);
+        stubScroll(inner, 'y', { content: 400, size: 200, position: 0 });
+        const forward = wallHandler();
+        const detach = attachSeamWheelRelay(root, forward);
+        expect(wheel(document.getElementById('inner-span')!).defaultPrevented).toBe(false);
+        expect(forward).not.toHaveBeenCalled();
         detach();
     });
 
