@@ -99,7 +99,7 @@ const PonderStage: React.FC<PonderStageProps> = ({ theme, isDaylight }) => {
     const target = session ? findPonderTarget(session.targetId) : null;
 
     // 章节按「此刻讲不讲得通」过滤：目标是按组件划分的，一个组件里却不是每件事都始终存在 ——
-    // 两个槽位可以放十个动作中的任意两个，没放随机时就不该有「随机其实是洗一次牌」这一章。
+    // 给了 isAvailable 的章节在自己那件事不成立时让开，不给就是始终适用。
     // 只在进入或换目标时求值一次，教程跑着的时候章节数不会变。
     const scenes = useMemo(
         () => (target ? target.scenes.filter(candidate => candidate.isAvailable?.() !== false) : []),
