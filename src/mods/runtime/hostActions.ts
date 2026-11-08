@@ -136,7 +136,7 @@ export const useFoliumHostActions = (actions: FoliumAppActions) => {
             setMuted: (muted) => useAudioSettingsStore.getState().handleSetMuted(muted),
             getLoopMode: () => useAudioSettingsStore.getState().loopMode,
             // Not gated on Stage playback, like the remote window's repeat button: the mode is a lasting preference.
-            setLoopMode: (mode) => useAudioSettingsStore.getState().handleSetLoopMode(mode),
+            setLoopMode: (mode) => useAudioSettingsStore.getState().handleSetLoopMode(mode, usePlaybackStore.getState().isFmMode),
             getQueue: (offset, limit) => buildFoliumQueueSnapshot(usePlaybackStore.getState(), offset, limit),
             playQueueItem: async (index, expectedRef) => {
                 const request = resolveFoliumQueuePlayRequest(usePlaybackStore.getState(), index, expectedRef);

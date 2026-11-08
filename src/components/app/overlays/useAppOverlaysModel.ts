@@ -68,6 +68,7 @@ export const useAppOverlaysModel = (deps: AppOverlaysDeps): AppOverlaysModel => 
     const displayDuration = usePlaybackStore(selectDisplayDuration);
     const displayPlayerState = usePlaybackStore(selectDisplayPlayerState);
     const playerControlSlotContext = useMemo(() => ({
+        isFmMode,
         onShuffle: deps.shuffleQueue,
         canShuffle: canShuffleQueue(playQueue.length, isFmMode, deps.isNowPlayingStageActive),
         onLike: deps.handleLike,

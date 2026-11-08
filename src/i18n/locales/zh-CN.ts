@@ -1136,6 +1136,7 @@ export default {
     "stageTrackPillOpenSongCard": "展开歌曲卡片",
     "loopingOn": "循环开启",
     "loopOff": "循环关闭",
+    "loopUnavailableInFm": "私人 FM 不支持循环模式",
     "toggleBackground": "切换背景",
     "importFile": "导入文件",
     "changeFile": "更换文件",

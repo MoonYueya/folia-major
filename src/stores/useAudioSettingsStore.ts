@@ -266,9 +266,12 @@ export type AudioSettingsState = {
     /** Sets the mute switch; the same value is a no-op. */
     handleSetMuted: (muted: boolean) => void;
     handleToggleMute: () => void;
-    /** Sets the repeat mode and toasts it like the repeat button; the mode already in effect is a no-op. */
-    handleSetLoopMode: (mode: StageLoopMode) => void;
-    handleToggleLoopMode: () => void;
+    /**
+     * Sets the repeat mode and toasts it like the repeat button; the mode already in effect is a no-op.
+     * 私人 FM 里什么都不写，只给一句说明：那里的播放一律按不循环算，这个偏好改了不起作用。
+     */
+    handleSetLoopMode: (mode: StageLoopMode, isFmMode?: boolean) => void;
+    handleToggleLoopMode: (isFmMode?: boolean) => void;
 };
 
 /*
@@ -477,7 +480,18 @@ export const useAudioSettingsStore = create<AudioSettingsState>((set, get) => ({
     handleToggleMute: () => {
         get().handleSetMuted(!get().isMuted);
     },
-    handleSetLoopMode: (mode) => {
+    handleSetLoopMode: (mode, isFmMode = false) => {
+        // 私人 FM 的队列既不绕回队首也不跳到队尾（到头是去拉新曲目），所以循环模式在 FM 里不生效，
+        // 那里的播放一律按不循环算（queueLoopMode）。FM 里就不许改这个偏好：改了只是在 localStorage
+        // 里留一个和实际播放不符的值，出了 FM 之后它又冒出来。判断和提示只写在这一处，
+        // 三个调用方各自把此刻是不是 FM 递进来：交互 bridge（面板、浮动播放条、命令面板的 l）、
+        // App 里遥控窗口那条 cycle-loop-mode、模组接口的 setLoopMode。
+        // 这个 store 不 import 播放 store：那条边会把 providerRegistry 一路拖进来，
+        // 只 mock 了平台 transport 一部分的用例在导入期就会炸。
+        if (isFmMode) {
+            setStatusMessage({ type: 'info', text: i18n.t('player.loopUnavailableInFm'), nonce: Date.now() });
+            return;
+        }
         if (mode === get().loopMode) {
             return;
         }
@@ -501,7 +515,7 @@ export const useAudioSettingsStore = create<AudioSettingsState>((set, get) => ({
     },
     // 四态按 不循环 → 列表循环 → 随机 → 单曲循环 转一圈：随机是一个常驻的播放模式，
     // 所以它排在列表循环和单曲循环之间，而不是按钮上的一个一次性动作。
-    handleToggleLoopMode: () => {
+    handleToggleLoopMode: (isFmMode = false) => {
         const prev = get().loopMode;
         const next = prev === 'off'
             ? 'all'
@@ -510,7 +524,7 @@ export const useAudioSettingsStore = create<AudioSettingsState>((set, get) => ({
                 : prev === 'shuffle'
                     ? 'one'
                     : 'off';
-        get().handleSetLoopMode(next);
+        get().handleSetLoopMode(next, isFmMode);
     },
 }));
 

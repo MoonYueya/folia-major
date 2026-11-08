@@ -1480,6 +1480,10 @@ export default function App() {
 
     useStagePlayerSearchBridge();
 
+    // 遥控窗口的循环按钮和主窗口走同一个 toggle；FM 里循环模式不生效，这条也要把标志递进去，
+    // 否则遥控窗口还能把偏好改成 FM 里不生效的那个值。
+    const cycleLoopModeFromRemote = useCallback(() => handleToggleLoopMode(isFmMode), [handleToggleLoopMode, isFmMode]);
+
     const {
         publishStagePlayerPlaybackUpdate,
     } = useElectronPlaybackBridge({
@@ -1507,7 +1511,7 @@ export default function App() {
         lyricTimelineOffsetMs: effectiveLyricTimelineOffsetMs,
         onRemoteExportCommand: handleExportCommand,
         onExternalPlayRequest: handleStageExternalPlayRequest,
-        onRemoteCycleLoopMode: handleToggleLoopMode,
+        onRemoteCycleLoopMode: cycleLoopModeFromRemote,
         onRemoteTransitionSeek: seekDuringTransition,
         publishTrackTransition: automixEnabled,
         isTrackTransitionAudible: automix.isTransitionAudible,
