@@ -242,12 +242,22 @@ const refreshPreparedQueue = () => {
         console.warn(`[ExternalPlayback] the start has not landed in ${PREPARED_QUEUE_START_LIMIT_MS / 1000}s: the prepared queue is written again`, { attempt: startPendingAttempt });
     }
     const state = usePlaybackStore.getState();
+    // Repeat one: the player goes on to nothing after this song, and what an earlier write left in
+    // its own queue is taken back where it can be emptied.
+    const loopMode = useAudioSettingsStore.getState().loopMode;
+    const retract = loopMode === 'one';
     // 这一轮随机的排列由这里读好再传进去：externalQueue 是 utils，自己不许碰 store。
-    const next = externalQueueSuccessors(current.song, state.playQueue, useAudioSettingsStore.getState().loopMode, state.isFmMode, omni.canPlaySong, PREPARED_TAIL, readShuffleRound());
-    const key = JSON.stringify(next.map(getPlaybackSongKey));
+    const next = externalQueueSuccessors(current.song, state.playQueue, loopMode, state.isFmMode, omni.canPlaySong, PREPARED_TAIL, readShuffleRound());
+    // The mode is part of the key: repeat one and the end of a queue both hand the player nothing, and
+    // the second one has nothing to take back.
+    const key = JSON.stringify([next.map(getPlaybackSongKey), retract]);
     if (current.preparedQueueKey === key) return;
     current.preparedQueueKey = key;
-    void omni.prepareExternalPlaybackQueue(current.song, next).catch(error => {
+    // Only repeat one asks for a take-back: every other call is the plain one, with no options to read.
+    const written = retract
+        ? omni.prepareExternalPlaybackQueue(current.song, next, { retract: true })
+        : omni.prepareExternalPlaybackQueue(current.song, next);
+    void written.catch(error => {
         // A newer song dropped this queued preparation: nothing went wrong.
         if (session !== current) return;
         if (current.preparedQueueKey === key) current.preparedQueueKey = '';
