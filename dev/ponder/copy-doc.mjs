@@ -17,6 +17,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'vite';
+import { traditionalLocalePlugin } from '../i18n/traditionalLocalePlugin.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const DOC_PATH = path.join(ROOT, 'docs', 'ponder-copy.md');
@@ -35,6 +36,9 @@ const server = await createServer({
     server: { middlewareMode: true, hmr: false, watch: null },
     optimizeDeps: { noDiscovery: true, include: [] },
     resolve: { alias: { '@': path.join(ROOT, 'src') } },
+    // 课文的文案要经 src/i18n/config 读一遍，而它导入的 zh-TW 是构建期才有的虚拟模块：
+    // 和 vitest.config.ts 一样把生成它的插件挂上，否则这里报 ERR_MODULE_NOT_FOUND。
+    plugins: [traditionalLocalePlugin()],
 });
 
 const walk = dir => fs.readdirSync(dir, { withFileTypes: true }).flatMap(entry => (

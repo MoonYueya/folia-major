@@ -72,16 +72,17 @@
 | `panel-cover-actions` | `ponder.targets.panelCoverActions` | playback | `src/components/ponder/targets/panel/panelCoverActions.target.ts` | `[data-ponder-panel-artwork]` | src/components/ponder/surfaces/panel/sidePanel.surface.tsx（side-panel） | `panel-cover-actions-reveal`<br>`panel-cover-actions-right` |
 | `panel-cover-tab` | `ponder.targets.panelCoverTab` | playback | `src/components/ponder/targets/panel/panelCoverTab.target.ts` | `[data-ponder-panel-tab-button="cover"]` | src/components/ponder/surfaces/panel/sidePanel.surface.tsx（side-panel） | `panel-cover-tab` |
 | `panel-queue-tab` | `ponder.targets.panelQueueTab` | playback | `src/components/ponder/targets/panel/panelQueueTab.target.ts` | `[data-ponder-panel-tab-button="queue"]` | src/components/ponder/surfaces/panel/sidePanel.surface.tsx（side-panel） | `panel-queue-tab`<br>`panel-queue-tab-radio` |
-| `panel-slide` | `ponder.targets.panelSlide` | playback | `src/components/ponder/targets/panel/panelSlide.target.ts` | `[data-testid="panel-toggle"]` | src/components/ponder/surfaces/command/commandWindow.surface.tsx（palette） | `panel-slide-to-palette`<br>`panel-slide-edge-hotspot`<br>`panel-slide-keyboard` |
+| `panel-slide` | `ponder.targets.panelSlide` | playback | `src/components/ponder/targets/panel/panelSlide.target.ts` | `[data-testid="panel-toggle"]` | src/components/ponder/surfaces/player/capsule.surface.tsx（capsule-palette） | `panel-slide-to-palette`<br>`panel-slide-edge-hotspot`<br>`panel-slide-keyboard` |
 | `panel-source-tab` | `ponder.targets.panelSourceTab` | playback | `src/components/ponder/targets/panel/panelSourceTab.target.ts` | `[data-ponder-panel-tab-button="local"], [data-ponder-panel-tab-button="navi"], [data-ponder-panel-tab-button="onlineLyrics"], [data-ponder-panel-source-lyrics-file], [data-ponder="lyric-file-dialog"]` | src/components/ponder/surfaces/panel/sidePanel.surface.tsx（side-panel） | `panel-source-tab-where`<br>`panel-source-tab-contents`<br>`panel-source-tab-export` |
 | `pinned-commands` | `ponder.targets.pinnedCommands` | basics | `src/components/ponder/targets/settings/pinnedCommands.target.ts` | `[data-settings-row="pinnedCommandSlots"]` | src/components/ponder/surfaces/settings/commandSettings.surface.tsx（pinned-commands-settings） | `pinned-commands-slots`<br>`pinned-commands-vs-recent` |
-| `player-bar` | `ponder.targets.playerBar` | playback | `src/components/ponder/targets/player/playerBar.target.ts` | `[data-ponder="player-bar"]` | src/components/ponder/surfaces/player/playerBar.surface.tsx（player-bar）<br>src/components/ponder/surfaces/settings/controlBarSettings.surface.tsx（bottom-ui-settings、picker）<br>src/components/ponder/surfaces/command/commandWindow.surface.tsx（queue、volume） | `player-bar-basics`<br>`player-bar-height`<br>`player-bar-slots`<br>`player-bar-shuffle`<br>`player-bar-volume` |
+| `player-bar` | `ponder.targets.playerBar` | playback | `src/components/ponder/targets/player/playerBar.target.ts` | `[data-ponder="player-bar"]` | src/components/ponder/surfaces/player/playerBar.surface.tsx（player-bar）<br>src/components/ponder/surfaces/player/capsule.surface.tsx（capsule-quick-actions、capsule-palette、slot-picker）<br>src/components/ponder/surfaces/settings/controlBarSettings.surface.tsx（bottom-ui-settings）<br>src/components/ponder/surfaces/command/commandWindow.surface.tsx（queue、volume） | `player-bar-basics`<br>`player-bar-quick-actions`<br>`player-bar-height`<br>`player-bar-slots`<br>`player-bar-shuffle`<br>`player-bar-volume` |
 | `player-page` | `ponder.targets.playerPage` | playback | `src/components/ponder/targets/player/playerPage.target.ts` | 没有悬停入口（页面级，或只从全部教程进入） | src/components/ponder/surfaces/player/playerPage.surface.tsx（player-page） | `player-page-layout`<br>`player-page-open-palette`<br>`player-page-run-commands`<br>`player-page-shuffle` |
 | `ponder-basics` | `ponder.targets.ponderBasics` | basics | `src/components/ponder/targets/basics/ponderBasics.target.ts` | 没有悬停入口（页面级，或只从全部教程进入） | src/components/ponder/surfaces/basics/onboarding.surface.tsx（ponder-onboarding）<br>src/components/ponder/surfaces/settings/settingsPage.surface.tsx（settings-page） | `help-page-ponder`<br>`help-page-whole-page`<br>`help-page-hint-settings` |
 | `queue-command-surface` | `ponder.targets.queueCommandSurface` | playback | `src/components/ponder/targets/command/queueCommandSurface.target.ts` | `[data-testid="command-palette-queue-view"]` | src/components/ponder/surfaces/command/queueCommand.surface.tsx（queue-command） | `queue-command-facets`<br>`queue-command-batch` |
 | `queue-settings` | `ponder.targets.queueSettings` | playback | `src/components/ponder/targets/settings/queueSettings.target.ts` | `[data-settings-row="queueDefaultBehavior"]` | src/components/ponder/surfaces/settings/playbackSettings.surface.tsx（queue-settings） | `queue-settings-behavior` |
 | `queue-shuffle` | `ponder.targets.queueShuffle` | playback | `src/components/ponder/targets/player/queueShuffle.target.ts` | 没有悬停入口（页面级，或只从全部教程进入） | src/components/ponder/surfaces/player/playerBar.surface.tsx（player-bar）<br>src/components/ponder/surfaces/command/commandWindow.surface.tsx（queue）<br>src/components/ponder/surfaces/player/playerPage.surface.tsx（player-page）<br>src/components/ponder/surfaces/panel/sidePanel.surface.tsx（side-panel）<br>src/components/ponder/surfaces/settings/commandSettings.surface.tsx（pinned-commands-settings） | `queue-shuffle-no-mode`<br>`queue-shuffle-command`<br>`queue-shuffle-slot`<br>`queue-shuffle-panel`<br>`queue-shuffle-pinned` |
 | `replay-gain-settings` | `ponder.targets.replayGainSettings` | playback | `src/components/ponder/targets/settings/replayGainSettings.target.ts` | `[data-settings-row="replayGainSettings"]` | src/components/ponder/surfaces/settings/playbackSettings.surface.tsx（replay-gain-settings） | `replay-gain-modes`<br>`replay-gain-mirrored` |
+| `scratchpad` | `ponder.targets.scratchpad` | browsing | `src/components/ponder/targets/library/scratchpad.target.ts` | `[data-ponder="scratchpad"]` | src/components/ponder/surfaces/library/scratchpad.surface.tsx（scratchpad） | `scratchpad-collect`<br>`scratchpad-drawer`<br>`scratchpad-canvas` |
 | `settings-page` | `ponder.targets.settingsPage` | basics | `src/components/ponder/targets/settings/settingsPage.target.ts` | 没有悬停入口（页面级，或只从全部教程进入） | src/components/ponder/surfaces/settings/settingsPage.surface.tsx（settings-page）<br>src/components/ponder/surfaces/command/commandWindow.surface.tsx（palette） | `settings-page-overview`<br>`settings-page-direct-navigation` |
 | `side-panel` | `ponder.targets.sidePanel` | playback | `src/components/ponder/targets/panel/sidePanel.target.ts` | `[data-testid="unified-panel-surface"]` | src/components/ponder/surfaces/panel/sidePanel.surface.tsx（side-panel） | `side-panel-structure`<br>`side-panel-tabs` |
 | `sign-in` | `ponder.targets.signIn` | basics | `src/components/ponder/targets/basics/signIn.target.ts` | `[data-testid="online-provider-switcher"], [data-ponder="sign-in"]` | src/components/ponder/surfaces/basics/signIn.surface.tsx（sign-in） | `sign-in-entries`<br>`sign-in-window`<br>`sign-in-account` |
@@ -108,7 +109,7 @@
     },
     "summaries": {
       "bravais_seam": "墙中间那道缝：三档开合、首页的页签与工具格、过滤和搜索的区别。",
-      "queue_shuffle": "Folia 没有随机播放模式，而是打乱队列；以及打乱队列的四个入口。",
+      "queue_shuffle": "随机是循环按钮上的第四态，打乱队列是一次性换掉队列顺序；以及打乱队列的四个入口。",
       "audio_equalizer": "十段均衡和效果链；拖动推子会改写自定义槽。",
       "vis_playground": "预览上的三块隐藏点击区。",
       "lyric_style": "每种样式的专属设置、莫奈部件的隐藏、背景搭配和通用副字幕。",
@@ -154,14 +155,15 @@
       "panel_slide": "那颗按钮还能往左滑，打开的是命令窗口。",
       "panel_source_tab": "跟着来源走的那一页：歌词来源、时间轴偏移、音频增益。",
       "lyric_export": "把本机缓存的歌词批量导成 .fia 和增强型 LRC，打成一个 zip。",
-      "player_bar": "整条胶囊上有什么，以及右边那两个可换的位置。",
+      "player_bar": "整条胶囊上有什么、右边两个按钮怎么就地换，以及停一下浮出来的快捷操作。",
       "player_page": "播放页上有什么、各在哪，以及随机播放怎么做。",
-      "ponder_basics": "悬停出提示、长按 G、整页 Ctrl+G，以及怎么把提示关掉。",
+      "ponder_basics": "悬停出提示、长按 G、整页 {{mod}}+G，以及怎么把提示关掉。",
       "settings_page": "设置怎么分组，以及从命令窗口直接跳过去。",
       "side_panel": "面板分几段、怎么换页。",
       "theme_settings": "预设、自定义配色从哪来，以及配色什么时候自己变。",
       "sign_in": "主页的登录按钮和右下角那一枚开的是同一个窗口。",
-      "lyric_match": "给一首歌手动挑一份歌词：换来源、搜索、先看再保存。"
+      "lyric_match": "给一首歌手动挑一份歌词：换来源、搜索、先看再保存。",
+      "scratchpad": "左缘那本速记簿：怎么收进歌、按来源分组处理、展开整页整理。"
     },
     "categories": {
       "basics": "上手",
@@ -173,9 +175,9 @@
     "noComponentsOnPage": "本页暂时没有单独的组件教程。",
     "onboarding": {
       "title": "认识思索模式",
-      "description": "按住 Ctrl + G，等进度走满，打开当前页面介绍。",
+      "description": "按住 {{mod}} + G，等进度走满，打开当前页面介绍。",
       "touchDescription": "现在点下面的按钮，打开当前页面的介绍。",
-      "shortcut": "按住 Ctrl + G",
+      "shortcut": "按住 {{mod}} + G",
       "required": "完成一次页面思索后才能继续。"
     },
     "allChaptersDone": "全部章节都看完了。",
@@ -278,7 +280,7 @@
         "panel": "歌词样式",
         "preview": "实时预览",
         "settingsPanel": "设置栏",
-        "tabs": "四页",
+        "tabs": "五页",
         "rows": "当前样式的设置",
         "rowTwo": "第二行",
         "rowFive": "第五行",
@@ -305,14 +307,14 @@
         "hotspotSubtitle": "字幕那一块",
         "pause": "暂停预览",
         "settingsPanel": "设置栏",
-        "tabs": "四页",
+        "tabs": "五页",
         "tabCommon": "通用",
         "shelf": "样式",
         "backgroundPictures": "背景类型",
         "subtitleFont": "字幕字体"
       },
       "themePark": {
-        "panel": "Theme Park",
+        "panel": "主题乐园",
         "header": "标题栏",
         "targetToggle": "在编辑哪一份",
         "reset": "重置",
@@ -568,7 +570,7 @@
       },
       "themeSettings": {
         "panel": "设置 · 主题",
-        "themePark": "打开 Theme Park",
+        "themePark": "打开主题乐园",
         "presetDefault": "内置预设",
         "presetCustom": "自定义配色",
         "source": "主题生成来源",
@@ -614,9 +616,12 @@
         "bar": "底部控制条",
         "slots": "两个槽位",
         "bottomUiSettings": "设置 · 控制栏",
-        "picker": "设置里的选择器",
+        "picker": "换按钮的浮层",
         "queue": "播放队列",
-        "volumeSurface": "音量面板"
+        "volumeSurface": "音量面板",
+        "quickActions": "快捷操作",
+        "paletteButton": "打开命令窗口",
+        "capsulePalette": "命令窗口"
       },
       "panelSlide": {
         "toggle": "面板开关",
@@ -674,6 +679,26 @@
         "save": "保存",
         "switches": "封面、元数据、歌词",
         "noMatch": "不使用在线数据"
+      },
+      "scratchpad": {
+        "page": "资料库",
+        "handle": "速记簿把手",
+        "card": "歌曲卡片",
+        "collect": "加入速记簿",
+        "save": "收藏到歌单",
+        "drawer": "速记簿",
+        "group": "来源分组",
+        "groupActions": "整组操作",
+        "row": "一首歌",
+        "rowActions": "行内按钮",
+        "footer": "对全部的操作",
+        "historyTab": "播放历史",
+        "expand": "展开整页",
+        "canvas": "画布",
+        "canvasGroup": "画布里的一组",
+        "slot": "吸附的位置",
+        "marquee": "框选",
+        "selection": "对选中的操作"
       }
     },
     "targets": {
@@ -682,7 +707,7 @@
       "audioEqualizer": "音频效果器窗口",
       "visPlayground": "歌词样式窗口",
       "lyricStyle": "歌词样式",
-      "themePark": "Theme Park",
+      "themePark": "主题乐园",
       "customShortcutSettings": "自定义快捷键",
       "pinnedCommands": "快捷命令",
       "replayGainSettings": "音频增益（ReplayGain）",
@@ -715,7 +740,7 @@
       "lyricExport": "歌词导出",
       "panelControlsTab": "面板 · 控制页",
       "panelQueueTab": "面板 · 播放列表页",
-      "panelAccountTab": "面板 · 账户页",
+      "panelAccountTab": "面板 · 音质页",
       "latticePage": "Lattice 页面",
       "bravaisWall": "Bravais 墙",
       "helpPage": "认识 Folia",
@@ -731,7 +756,8 @@
       "gridPaletteHotkey": "网格上的 S 键",
       "settingsPage": "设置页面",
       "signIn": "登录在线音乐平台",
-      "lyricMatch": "匹配歌词窗口"
+      "lyricMatch": "匹配歌词窗口",
+      "scratchpad": "速记簿"
     },
     "scenes": {
       "bravaisSeamLevels": "三档：完整、书脊、折叠",
@@ -740,12 +766,12 @@
       "bravaisSeamHomeDock": "账户入口与工具格",
       "bravaisSeamFilter": "过滤当前页，和搜索不是一回事",
       "bravaisSeamTools": "右下角的墙面工具",
-      "queueShuffleNoMode": "没有随机模式，只有打乱队列",
+      "queueShuffleNoMode": "循环按钮上的随机，和打乱队列不是一回事",
       "queueShuffleCommand": "用命令打乱",
       "queueShuffleSlot": "放进控制条按钮",
       "queueShufflePanel": "队列面板上的按钮",
       "queueShufflePinned": "固定在命令窗口底部",
-      "visPlaygroundCommon": "四页各管什么，以及「通用」里有什么",
+      "visPlaygroundCommon": "五页各管什么，以及「字体」里有什么",
       "visPlaygroundVisuals": "样式与背景",
       "visPlaygroundSubtitle": "字幕",
       "lyricStylePerStyle": "每种样式有自己的设置",
@@ -759,7 +785,7 @@
       "audioEqualizerEffects": "底下那条效果链",
       "visPlaygroundLayout": "左边是真的在跑的预览",
       "visPlaygroundHotspots": "三块你看不见的区域",
-      "visPlaygroundSections": "右栏那四页",
+      "visPlaygroundSections": "右栏那五页",
       "themeParkTarget": "你在编辑哪一份主题",
       "themeParkColors": "亮和暗是两份配色",
       "themeParkSaving": "保存为什么按不动",
@@ -800,7 +826,7 @@
       "sidePanelCoverTab": "封面页",
       "sidePanelControlsTab": "控制页",
       "sidePanelQueueTab": "播放列表页",
-      "sidePanelAccountTab": "账户页",
+      "sidePanelAccountTab": "音质页",
       "lyricsAnimationEntry": "换歌词动画在哪儿换",
       "themeSettingsPresets": "预设与自定义",
       "themeSettingsSource": "配色从哪来",
@@ -874,8 +900,8 @@
       "settingsPageDirectNavigation": "从命令直接跳转",
       "playerBarBasics": "这条胶囊上有什么",
       "playerBarHeight": "整条的高度可以改",
-      "playerBarSlots": "右边两个位置可以换",
-      "playerBarShuffle": "随机只洗一次牌",
+      "playerBarSlots": "右边两个按钮可以就地换",
+      "playerBarShuffle": "打乱队列只洗一次牌",
       "playerBarVolume": "音量在命令面板里",
       "panelSlideToPalette": "滑动打开命令面板",
       "panelSlideEdgeHotspot": "从边缘唤出手柄",
@@ -885,7 +911,11 @@
       "signInAccount": "登录之后",
       "lyricMatchSearch": "换来源，重新搜",
       "lyricMatchPick": "挑一条，先看歌词",
-      "lyricMatchLocal": "本地歌曲多出来的三个开关"
+      "lyricMatchLocal": "本地歌曲多出来的三个开关",
+      "scratchpadCollect": "收进来",
+      "scratchpadDrawer": "打开与分组",
+      "scratchpadCanvas": "展开整页",
+      "playerBarQuickActions": "停一下，浮出快捷操作"
     },
     "captions": {
       "bravaisSeam": {
@@ -898,7 +928,7 @@
         "collectionAbout": "大标题下面是这一层的说明：歌单简介、专辑介绍。歌手页这一块是头像、名字和简介，排得像书勒口上的作者简介。正文长了会截断，点一下展开。",
         "collectionActions": "播放全部、加入队列，行尾的星标是收藏（能收藏的集合才有）。歌手页上这两颗只管热门歌曲。",
         "collectionList": "「列表」把信息条加宽成歌曲列表，面包屑多出一级「列表」。悬停一行，墙上同一首的磁贴跟着亮起；单击转到它，双击播放。返回先关列表。",
-        "homeTabs": "首页的信息条是一道窄缝：最上面是「书库」和折叠，下面竖排着一级页签——歌单、电台、专辑、本地、Navidrome。",
+        "homeTabs": "首页的信息条是一道窄缝：最上面是「书库」和折叠，下面竖排着一级页签——歌单、推荐、专辑、本地、Navidrome。",
         "homeFlip": "换页签时整条信息条翻一次，墙也整面换成那一页的内容。键盘上 F6 / Shift + F6 轮换页签。",
         "homeSections": "本地和 Navidrome 多一列二级切换（文件夹、专辑、艺术家、歌单……）。只有选中的那项竖着写出名字，其余只留图标，悬停看全名。切换只换墙上的内容，不进新的一层。",
         "homeShortcuts": "下面那几列竖排小字是直达入口：我喜欢的音乐、私人 FM、全部歌曲……点它和点墙上那张卡一样，私人 FM 直接开播。地方不够时，它们挪进「⋯」。",
@@ -914,7 +944,7 @@
         "toolsAppearance": "最下面是墙面外观：透光在三档之间轮换，还有海报叠色和开灯 / 关灯。向左滑这颗按钮，直接打开命令面板。"
       },
       "queueShuffle": {
-        "noMode": "Folia 不提供传统的随机播放模式，循环按钮也不会切到随机。想随机听，就打乱当前队列。",
+        "noMode": "循环按钮现在是四态：不循环、列表循环、随机、单曲循环。随机是常驻模式，开着就按随机顺序往下放；这里讲的是打乱队列 —— 一次性换掉队列顺序。",
         "once": "打乱是一次操作：当前队列原地洗一次牌，之后按新顺序播放。想换个顺序，再打乱一次。",
         "command": "最快的是命令：命令窗口关着、焦点不在输入框时按冒号进入执行模式，再按 r。也可以在命令窗口里搜「打乱队列」。",
         "slot": "常用的话，在设置 · 播放页的「进度条右侧按钮」里选「随机队列」，控制条上就多一颗打乱按钮。",
@@ -945,8 +975,8 @@
         "combineBackground": "只换背景：歌词样式不动。背景自己的参数在歌词样式窗口的「背景」页。",
         "combineStyle": "再只换歌词样式：刚选的背景留着。任意背景都能配任意歌词样式；只有「静止」样式不渲染背景。",
         "subtitleShared": "多数歌词样式在底部共用这一条副字幕。莫奈、时计和静止把翻译排进自己的版面，不用这一条。",
-        "subtitleContent": "它的设置在歌词样式窗口的「字幕」页，对所有使用它的样式一起生效。第二行选择显示翻译、罗马音、罗马音加翻译两行，或不显示。",
-        "subtitleBlur": "关闭「非翻译歌词添加模糊效果」，副字幕就不再模糊。",
+        "subtitleContent": "它的设置在歌词样式窗口的「字幕」页，对所有使用它的样式一起生效。可以显示单行、双行或三行，每行是当前句、下一句、翻译或罗马音。",
+        "subtitleBlur": "关闭「下一句歌词添加模糊效果」，副字幕就不再模糊。",
         "subtitleFont": "关闭「字幕继承歌词字体」后，可以给字幕单独设置字体和字重；「字幕缩放」单独调整字号，随时可用。"
       },
       "visPlayground": {
@@ -955,16 +985,16 @@
         "invisible": "预览上有三块隐藏点击区，没有边框、底色或标签。",
         "three": "指针扫过去它们才显形：顶上一条是背景，中间一大块是歌词动画，底下一条是字幕。",
         "jumps": "点其中一块，右边设置栏就跳到对应那一页。这是这一屏里最快的走法 —— 指着画面上你想改的那部分，而不是去读标签的名字。",
-        "four": "设置栏一共四页：歌词动画、背景、通用、字幕。热区指向的就是其中三页，所以标签和画面是同一份清单的两个入口。",
-        "common": "只有一个例外：「通用」没有自己的热区，因为它不是画面的一部分 —— 它装的是作用于整屏的那些。那一页只能从这排标签进。",
-        "fonts": "「通用」设置歌词字体、字号和字重。字重默认自动，也可手动指定。",
+        "four": "设置栏一共五页：歌词动画、背景、字体、字幕、全局。热区指向的就是其中三页，所以标签和画面是同一份清单的两个入口。",
+        "common": "例外是「字体」和「全局」：它们没有自己的热区，因为都不是画面的一部分 —— 「字体」装的是作用于整屏的那些，「全局」是智能动感模式这样不属于任何一种样式的开关。这两页只能从这排标签进。",
+        "fonts": "「字体」设置歌词字体、字号和字重。字重默认自动，也可手动指定。",
         "previewText": "第一行挑的是预览唱什么。想看看这套字撑不撑得住长句、或者别的文字系统，换一段示例比等一首真歌放到那儿要快。",
         "sectionReset": "标签那一行右端的「默认」只退当前这一页。它不是整个窗口的复位 —— 你在别的页上调过的东西不会被它带走。",
         "animation": "歌词样式在预览下面这一架图里选，点一张就换。样式比一章能讲完的多，值得你自己翻一遍，所以这里不把清单念一遍。",
         "perMode": "「歌词动画」页是当前样式自己的参数；换样式，这一页也跟着换。",
         "background": "「背景」页是同一套做法：先在这一格图里挑背景，再调这个背景。它和歌词样式是两层，各挑各的，任意组合都成立。",
-        "subtitleContent": "字幕第二行可选：翻译、罗马音、罗马音在上翻译在下的两行，或不显示。莫奈、时计和静止选两行时只显示翻译。",
-        "subtitleLegibility": "下面三行管字幕看不看得清：「字幕透明度」「字幕背景」，以及「非翻译歌词添加模糊效果」。",
+        "subtitleContent": "底部字幕先选行数：单行、双行或三行，再选每行显示当前句、下一句、翻译或罗马音。下面的「副字幕内容」只管莫奈、时计和静止排进自己版面的那一条。",
+        "subtitleLegibility": "下面三行管字幕看不看得清：「字幕透明度」「字幕背景」，以及「下一句歌词添加模糊效果」。",
         "subtitleFont": "字幕默认跟随歌词字体。关闭后，字幕自己的字体和字重设置才会出现；「字幕缩放」一直都在。"
       },
       "themePark": {
@@ -980,7 +1010,7 @@
       "customShortcut": {
         "alt": "左边固定为 Alt，右边录入字母。只支持 Alt + 字母。",
         "capture": "点第二颗键帽开始录入，下次按下的字母会绑定。修饰键忽略，按 Esc 取消。",
-        "taken": "已被占用的字母不能绑定，红字会说明原因。S、Ctrl+K 和其他命令的快捷键都算占用。",
+        "taken": "已被占用的字母不能绑定，红字会说明原因。S、{{mod}}+K 和其他命令的快捷键都算占用。",
         "clear": "录上之后键帽旁边会多一颗小小的 ✕，按它就把绑定清掉；在你重新录一颗之前，这条快捷键什么都不运行。",
         "filtered": "下拉框只列出可在所有页面使用的命令；依赖特定页面或面板的命令不会出现。",
         "goesQuiet": "快捷键执行时还会再次检查条件。命令失效或按键被占用时，它不会改做别的事，只会失效。"
@@ -995,7 +1025,7 @@
       "replayGain": {
         "off": "关闭后不使用文件里的 ReplayGain 标签，每首歌按原始音量播放。",
         "trackAlbum": "按单曲会让不同歌曲的响度更接近；按专辑会保留专辑内部的强弱变化。两种模式都只改播放音量，不改文件。",
-        "sameValue": "控制面板来源页的三个按钮与这里共用同一个 ReplayGain 设置，改一处会同步另一处。",
+        "sameValue": "控制面板来源页的按钮与这里共用同一个 ReplayGain 设置，改一处会同步另一处。",
         "summary": "来源页还会显示这首歌自带的单曲和专辑增益值；没有标签时写着「未检测到 ReplayGain」。"
       },
       "importExport": {
@@ -1008,12 +1038,12 @@
         "derived": "有些改动不会写在配置里，但会随导入发生：例如切到自定义主题、删除已上传字体。它们不能单独取消，只能取消对应的主改动。"
       },
       "onboarding": {
-        "overviewCtrlG": "第一步：在任何页面按下 Ctrl + G，就能打开这一页的思索。",
+        "overviewCtrlG": "第一步：在任何页面按下 {{mod}} + G，就能打开这一页的思索。",
         "overviewWholePage": "思索会一步一步讲解当前页面：上面有什么，各在哪里，可以怎么操作。你现在看的就是一段思索。",
         "overviewHover": "第二步：有些按钮和组件比较复杂。把指针停在上面，旁边会出现思索提示。",
         "overviewHold": "第三步：看到提示后，按住 G 不放。进度走满后，会打开这个组件的思索；提前松手则取消。",
         "overviewSettings": "不需要这些提示时，可以在设置中关闭。点下方按钮可直接打开设置。",
-        "overviewCommandPalette": "在任何界面，按 Ctrl + K 呼出命令面板。命令面板是应用的主要操作方式。使用命令面板可以在任何页面进行常用功能调整。",
+        "overviewCommandPalette": "在任何界面，按 {{mod}} + K 呼出命令面板。命令面板是应用的主要操作方式。使用命令面板可以在任何页面进行常用功能调整。",
         "overviewExampleVolume": "例如在任何地方调节音量。",
         "overviewExampleQueue": "或者拉起队列搜索。",
         "overviewExampleFilter": "或者直接对当前歌单进行二次检索，然后送入播放队列。",
@@ -1021,14 +1051,14 @@
         "here": "这是当前页面的思索教程，不是视频。进度条可拖，方向键切换关键帧，Space 暂停，Esc 退出。",
         "hover": "悬停在按钮或组件上会出现提示。按住 G，进度走满后打开对应教程。",
         "hold": "按住不放，进度走满后打开教程；提前松手会取消。",
-        "wholePage": "不想找组件也行：在任意页面上按住 Ctrl + G，打开的是整页的教程 —— 这一页上有什么、各在哪、能怎么操作。",
+        "wholePage": "不想找组件也行：在任意页面上按住 {{mod}} + G，打开的是整页的教程 —— 这一页上有什么、各在哪、能怎么操作。",
         "touchBulb": "触屏没有悬停，所以用右上角灯泡打开本页教程。它出现几秒后会收起，点右上角可再次唤出。鼠标看不到它是正常的。",
         "mediaKeys": "Windows 用 SMTC，Linux 用 MPRIS；系统媒体键和媒体浮窗都可控制或显示当前歌曲。",
         "inAppTransport": "Space 播放/暂停，{{mod}} + ←/→ 切歌；播放页 ←/→ 快退或快进 5 秒。更多操作用命令窗口。",
         "shortcutK": "{{mod}} + K 打开命令窗口，功能和设置都可直接搜索。",
         "shortcutP": "{{mod}} + P 打开播放队列；输入行可筛选，也支持 @artist: 等条件。",
         "shortcutB": "{{mod}} + B 打开 Lattice；已在 Lattice 时返回。",
-        "shortcutG": "Ctrl + G 就是刚才那一下：打开当前页面的思索教程。任何时候迷路了，先按它。",
+        "shortcutG": "{{mod}} + G 就是刚才那一下：打开当前页面的思索教程。任何时候迷路了，先按它。",
         "hintSettings": "可在设置 · 通用关闭思索提示，或只提示未看过的区域。下方按钮可直接打开设置。",
         "docs": "这四章只是入门。命令、快捷键、在线来源、本地曲库、可视化和主题见文档站。"
       },
@@ -1037,7 +1067,7 @@
         "gridNavigation": "滚动、滑动或用方向键在卡片间移动，然后选中当前卡片进入其中。",
         "gridSearch": "网格处于当前页面时直接输入文字即可筛选本页内容；按 Esc 关闭筛选。",
         "gridHelp": "左侧齿轮打开帮助页；有新版本时，更新提示也会出现在这里。Help 内仍可打开版本更新说明和本页 Ponder。",
-        "gridTabs": "中间页签切换歌单、电台、专辑、本地库、Navidrome 与 Stage。Lattice 图标只在已有播放队列时出现。",
+        "gridTabs": "中间页签切换歌单、推荐、专辑、本地库、Navidrome 与 Stage。Lattice 图标只在已有播放队列时出现。",
         "gridSearchBox": "右侧是跨当前来源的歌曲搜索。输入后按 Enter 会进入搜索工作台；它不会筛选下方的集合海报。",
         "gridTabResult": "切换页签后，下方 3D 轨道会换成该来源的集合，并记住各来源最后聚焦的位置。",
         "gridSourceActions": "这一组只在当前来源需要时出现，例如本地库的导入、刷新和播放列表导入，或服务器库的重新加载。",
@@ -1046,7 +1076,7 @@
         "gridMap": "点顶部「全部」打开 GridMap 查看所有集合；{{mod}} + F 或直接输入可筛选集合。",
         "gridSearchResult": "提交右上角搜索后会打开独立搜索工作台，结果按歌曲列出，可播放、打开艺人/专辑或加入队列。",
         "gridCardKeys": "← / → 切换中央海报，Enter 打开当前集合；滚轮和水平拖动执行同样的焦点移动。",
-        "gridPageKeys": "Tab / Shift + Tab 切换页签；{{mod}} + K 命令；{{mod}} + B 进 Lattice（需有队列）；Ctrl + G 本页 Ponder。",
+        "gridPageKeys": "Tab / Shift + Tab 切换页签；{{mod}} + K 命令；{{mod}} + B 进 Lattice（需有队列）；{{mod}} + G 本页 Ponder。",
         "gridView": "集合网格展示刚才打开的卡片所包含的歌曲、专辑或艺人。返回时会回到上一级，并保留原来的位置。",
         "gridViewActions": "选中卡片可以播放或继续进入。页面操作区还会按集合能力提供全部播放、加入队列、编辑等动作。",
         "gridViewBack": "左上角返回按钮退出当前集合，并清理这次进入使用的导航记录。Esc 在没有更内层状态时也会返回。",
@@ -1062,15 +1092,15 @@
         "playerLyrics": "中间这块是歌词与可视化。它不是控件：点它等于点背景，只切换控制条的显隐，不会暂停。",
         "playerBarWhere": "控制条浮在屏幕底部正中，不贴边。左端是播放/暂停，中间是歌名和进度条，右端两个位置放什么由你决定。",
         "playerToggleWhere": "侧边手柄贴在屏幕右缘，底边和控制条对齐。它是一颗圆按钮，按一下展开右侧控制面板。",
-        "playerPanelWhere": "面板从手柄上方展开，贴着右侧。打开时是这首歌的封面页，最底下一排是封面、控制、播放列表、账户等标签页。",
+        "playerPanelWhere": "面板从手柄上方展开，贴着右侧。打开时是这首歌的封面页，最底下一排是封面、控制、播放列表、音质等标签页。",
         "playerPaletteSlide": "手柄背后还藏着一条向左的滑轨。按住手柄往左拖，越过判定线再松手，打开的是命令窗口，不是面板。",
-        "playerPaletteOpened": "命令窗口从屏幕上方落下，水平居中。Folia 把「找功能」这件事全部收在这里。",
-        "playerPaletteOtherWays": "{{mod}} + K 可随时打开命令窗口。播放页焦点不在输入框时，按 S 也可以；触屏先点右缘唤出手柄。",
+        "playerPaletteOpened": "命令窗口从底部的控制条原地长出来：输入框在底，最匹配的结果紧挨着它；看不到控制条时，它从屏幕上方落下。Folia 把「找功能」这件事全部收在这里。",
+        "playerPaletteOtherWays": "{{mod}} + K 可随时打开命令窗口。播放页焦点不在输入框时，按 S 也可以；点控制条的空白处也行（播放入口设成 Lattice 时，这一下去 Lattice）；触屏先点右缘唤出手柄。",
         "playerCommandFilter": "窗口开着就直接打字，它按名字、别名和关键词一起筛。↑↓ 选，Enter 执行 —— 不必先想清楚这条命令归在哪一类。",
         "playerCommandArgument": "需要参数的命令不会立刻跑。打完命令名按空格，它收成输入行里的一枚标签，光标留在后面等你补参数，补完再 Enter。",
         "playerExecuteCloseFirst": "执行模式要在命令窗口关闭时进入。先按 Esc 关掉窗口：窗口开着时按冒号，只会把冒号打进输入框。",
         "playerExecuteMode": "回到播放页，焦点不在输入框时按冒号，命令窗口会直接以执行模式打开。进入后按 r/v/o/h 执行命令。",
-        "playerShuffleNoSwitch": "Folia 没有常驻的随机播放开关；它是一次操作，按下后会打乱当前队列。",
+        "playerShuffleNoSwitch": "随机播放就在控制条左端的循环按钮上：点一下依次切到列表循环、随机、单曲循环。右边那颗「随机队列」是另一回事 —— 一次操作，按下就把当前队列洗一次牌。",
         "playerShuffleHow": "播放页按冒号进入执行模式，再按 r 打乱队列；再次执行可换顺序。",
         "playerShuffleSlot": "如果你常用它，把「随机队列」放进控制条右边那两个位置之一，以后按一下就行。",
         "lattice": "Lattice 把整条播放队列铺成一面海报墙。你可以在墙上移动查看队列，并选中海报来操作那首歌。从探索页打开时，铺开的是探索页的专辑、歌单、歌手和歌曲。",
@@ -1084,7 +1114,7 @@
         "latticeLights": "灯光关闭后海报退暗，只保留必要层次；这是显示设置，不会暂停播放或修改队列。",
         "latticePosterKeys": "收起时 Enter/Space 展开；展开后 Enter 播放/暂停，Space 显示控制，Esc 收起。",
         "latticePageKeys": ": + C 当前歌曲；{{mod}} + P 队列；{{mod}} + B 返回；{{mod}} + K 命令；方向键移动。",
-        "help": "Folia 分开处理浏览、播放、命令和设置。Ctrl+G 说明当前页面，有特殊操作的组件也有独立教程。",
+        "help": "Folia 分开处理浏览、播放、命令和设置。{{mod}}+G 说明当前页面，有特殊操作的组件也有独立教程。",
         "helpCommands": "{{mod}} + K 可以搜索全部命令和设置。对于藏得较深的选项，直接搜名称通常比记住它在哪一级更快。",
         "helpOperatingModel": "网格选歌，Player 或 Lattice 播放；底部控制条负责播放，帮助和设置覆盖当前页面。",
         "settings": "左侧按界面、音乐、应用和高级分组列出类别；右侧显示当前类别里的具体设置。",
@@ -1095,18 +1125,23 @@
         "basicsIntro": "播放控制只有这一条胶囊；上一首、下一首、随机、循环和音量都不常驻。",
         "basicsPlay": "整条上唯一永远在的按钮是播放 / 暂停。宽屏时它在最左端；窄到一行放不下时，它落到第二行正中，两个槽位分列两侧。",
         "basicsTitle": "悬停歌名，两侧会显示上一首和下一首；点箭头切歌。",
-        "basicsProgress": "进度条就地拖动或点击跳转。点胶囊其他任何地方不是暂停，而是进入播放页；在 Lattice 上则是把视野拉回当前这首。",
-        "basicsSlots": "剩下的功能都归右边这两个位置。十个动作里你挑两个放上去，别的一律不在条上 —— 这就是这里没有一排固定按钮的原因。",
+        "basicsProgress": "进度条就地拖动或点击跳转。点胶囊其他地方不是暂停：平时是去播放页，播放入口设成 Lattice 时去 Lattice（私人 FM 时仍是播放页）；人已经在播放页、这一下又不去 Lattice 时，改成打开命令窗口；在 Lattice 上则是把视野拉回当前这首。",
+        "basicsSlots": "剩下的功能都归右边这两个位置，放什么由你挑，右键或按住就能就地换。别的都不在条上，常用的几样指针停一下会浮在胶囊上方。",
         "basicsCollapsed": "移开指针，整条收回成一根进度条。你平时看到的是这个形态，需要控制时靠近它就会展开。",
         "heightIntro": "这条控制条离屏幕底边有多远是可以改的，各页面的歌曲卡片和侧边面板会跟着一起动。",
         "heightSettings": "入口在设置 → 播放页 → 控制栏。滑杆调整高度，「在播放页拖动调整」允许直接拖动控制条；命令窗口也能打开同一设置。",
         "heightDrag": "进了拖动调整之后，按住胶囊任意位置上下拖。松手即生效，而且会被记住。",
         "slotsIntro": "进度条右边这两个按钮不是固定的，两个位置各自独立。",
-        "slotsWhere": "在设置里挑：循环、随机、喜爱、队列、音量、睡眠定时等十个动作里任选，选完立刻生效。",
-        "shuffleIntro": "这个随机和别处的不一样 —— 它不是一个开着就一直生效的模式。",
+        "shuffleIntro": "这颗是「随机队列」，和循环按钮上的随机不是一回事：它不切换模式，只把当前队列洗一次牌。",
         "shuffleOnce": "按一下，Folia 把当前队列原地洗一次牌，洗完这个顺序就定下来了。想换个顺序就再按一次。",
         "volumeIntro": "底部控制条上没有常驻的音量滑块。",
-        "volumeOpens": "按这里打开的是命令面板里的音量面板，不是就地弹一个小滑块。"
+        "volumeOpens": "按这里打开的是命令面板里的音量面板，不是就地弹一个小滑块。",
+        "slotsHold": "在按钮上按住，外圈画满就松开；或者直接右键。",
+        "slotsPick": "按钮正上方弹出能放的动作，点一个就换上；选另一侧正放着的那个，两边互换。设置里也能改，下面的按钮直达。",
+        "slotsSuggest": "在命令窗口里常用、又能放上来的动作，进度条上方会问你一次要不要换上。",
+        "quickIntro": "指针在胶囊上停一下，上方会浮出一排和这首歌有关的操作：音量、喜爱、加到歌单、打乱、字幕、歌词样式。已经放在右边两个按钮里的不会重复。触屏上点开胶囊、或者一暂停，这一排就直接浮出（不含音量），4 秒没碰就收起。",
+        "quickPalette": "最右边那个打开命令窗口。它从胶囊原地长出来：输入框落在胶囊的位置，最匹配的结果紧挨着它。",
+        "quickOther": "在播放页点胶囊的空白处也会这样打开，触屏上要等这一排浮着时再点一下（播放入口设成 Lattice 时，这一下去 Lattice）；按 {{mod}} + K 时只要胶囊在屏幕上，同样从它长出来。关掉时它缩回胶囊。"
       },
       "commandPalette": {
         "type": "命令是搜出来的，不是翻出来的。窗口一开就打字，它按名字、别名和关键词一起筛；记不住全名，记得一半也找得到。",
@@ -1161,7 +1196,7 @@
         "queueRadioMode": "顶上那颗按钮写的是你现在在哪个电台模式；点它打开的是命令窗口里的模式选择器，和命令面板给的是同一个。",
         "queueRadioActions": "这一行两端是丢弃和喜欢。丢弃后服务不会再播放这首，电台会继续下一首。",
         "cover": "面板打开时是封面页：这首歌的大封面，下面是歌名、歌手和专辑，再下面一行是它的几个动作。",
-        "tabs": "最底下一排是标签页：封面、控制、播放列表、账户；这首歌有来源信息时，封面后面多一个来源页，就是这里的第二格。装了带页面的模组，后面还会多出它的页。",
+        "tabs": "最底下一排是标签页：封面、控制、播放列表、音质；这首歌有来源信息时，封面后面多一个来源页，就是这里的第二格。装了带页面的模组，后面还会多出它的页。",
         "body": "换到别的页，顶上那首歌收成一行，点它回到封面页；中间是这一页的内容。内容有多高面板就有多高，标签那一排一直在底边。",
         "cycle": "不必去点那一排小格子。面板开着时按 Tab，就在标签页之间往后循环一格。",
         "cycleReverse": "Shift + Tab 往回一格。循环只在当前真的有的那几页之间走 —— 来源不同，页数也不同。",
@@ -1174,13 +1209,13 @@
         "sourceExportFormats": "窗口上面是导入，接受 lrc、vtt、ttml、qrc、yrc、krc、txt 和 Folia 导出的 .fia；Navidrome 的歌曲不能导入，窗口里只有导出。中间两块把这一首导成文件：.fia 保留逐字时间轴、翻译、背景和声和你保存的分词，能原样导回来；.lrc 是增强型 LRC，别的播放器也能读，但这些 Folia 专有的信息会丢掉。",
         "sourceExportBatch": "最底下一行是批量导出：它会打开命令面板里的导出页，一次导出本机缓存的所有歌词。设置 · 存储与备份「缓存详情」里「歌词」那一行也有同一个入口。",
         "coverTab": "封面页就是这首歌：大封面，下面是歌名、歌手和专辑，再下面一行动作。这一页没有别的内容。",
-        "coverTabDetail": "点击歌手或专辑可进入对应集合。点击歌名复制歌曲信息，按住 Ctrl 点击可打开来源页面。",
+        "coverTabDetail": "点击歌手或专辑可进入对应集合。点击歌名复制歌曲信息，按住 {{mod}} 点击可打开来源页面。",
         "controlsTab": "控制页最上面是音量一行，下面三格是循环、智能过渡和音频效果器：前两格点一下就开关，第三格打开一个窗口。",
-        "controlsTabDetail": "再往下是歌词样式、背景类型两行和「播放页透明背景」开关，最下面两行是主题：来源、当前主题、生成 AI 主题和明暗。音频增益与歌词偏移在来源页。",
+        "controlsTabDetail": "再往下是歌词样式、背景类型两行和「播放页透明背景」开关，最下面两行是主题：来源、当前主题、明暗和生成 AI 主题。音频增益与歌词偏移在来源页。",
         "queueTab": "播放列表页是当前播放队列的完整列表，顶上一行写着队列里有多少首。",
         "queueTabDetail": "点击歌曲即可播放；悬停后可移到下一首、移到队尾或移除。顶部按钮可打开 Lattice 或打乱队列。这里不能拖动排序。",
-        "accountTab": "账户页管的是当前音乐来源那一侧的事。",
-        "accountTabDetail": "账户页显示登录状态、默认音质和「同步数据」。没登录时，这里是一颗「去主页登录」。"
+        "accountTab": "音质页管的是当前音乐来源那一侧的事。",
+        "accountTabDetail": "音质页显示登录状态、默认音质和「同步数据」。没登录时，这里是一颗「去主页登录」。"
       },
       "transition": {
         "enable": "这一组管的是两首歌之间怎么接上。最上面是总开关 —— 它和控制页里「智能过渡」那一格是同一个值，两处改的是同一件事。",
@@ -1304,7 +1339,7 @@
         "appear": "封面页上，歌名下面这一行一直在：左边是这首歌的几个动作，右端是回到首页和设置。换到别的页，这一行收起来，只在顶上留一颗喜欢。",
         "settings": "齿轮打开设置。按下去面板会先收起来，再把设置窗口铺上来。",
         "home": "右端的房子回到首页的海报墙，面板会先收起。播放不会中断。",
-        "addToPlaylist": "星形那颗把当前这首加进歌单。只有当前来源支持歌单时它才在；加不了的时候它是灰的，指针停上去会写明原因。",
+        "addToPlaylist": "星形那颗把当前这首收藏到歌单，第一行是「我喜欢」（红心）。来源既不支持歌单也不支持红心时它是灰的，指针停上去会写明原因。",
 
         "like": "心形是喜欢这首歌。当前来源做不了这件事时它是灰的，指针停上去会写明原因。",
         "playingFrom": "队列是从某张歌单或专辑开始播的，这里就多一枚写着它名字的按钮：点一下回到那一页，并找到这首歌。队列换成别的歌之后它就不在了。"
@@ -1312,13 +1347,13 @@
       "lyricsAnimation": {
         "where": "设置 · 外观最上面这一行「歌词动画样式」是换歌词样式的入口，右端写着现在用的是哪一个。",
         "playground": "点开是歌词样式窗口。左边那一大块是实时预览，放的就是播放页真正会渲染出来的样子；右边那条窄栏才是设置。",
-        "playgroundSections": "样式在预览下面那一架图里选。右栏分为歌词动画、背景、通用、字幕四页，「歌词动画」页是所选样式的参数。",
+        "playgroundSections": "样式在预览下面那一架图里选。右栏分为歌词动画、背景、通用、字幕、全局五页，「歌词动画」页是所选样式的参数。",
       },
       "themeSettings": {
         "presetDefault": "「配色主题预设」左边一段是内置的「墨染 / 素白」，跟着明暗模式在深色和浅色之间自动换。",
         "presetCustom": "右边一段是自定义配色。还没有自定义主题时它是灰的、按不动；有了之后选中它，播放页、卡片和面板都会换成这套颜色。",
         "source": "「主题生成来源」在下面「歌曲主题」那一组：AI 推断或封面取色。没有配置 API Key 时，这一行下面会多出一句提示和一颗去配置的按钮。",
-        "themePark": "「打开 Theme Park」这一行打开配色编辑窗口，左侧是实时预览。",
+        "themePark": "「打开主题乐园」这一行打开配色编辑窗口，左侧是实时预览。",
         "themeParkTabs": "右栏有配色、信息、内容、AI 四页。配色页分别保存亮暗两套颜色；AI 页复制提示词，再把 AI 写回的 JSON 导入草稿。",
         "followSystem": "「明暗模式」有三段：浅色、深色、跟随系统。选跟随系统，应用按系统的设置自动切换明暗。",
         "preferCustom": "「优先使用自定义主题」打开之后，主题自动切换会被关掉 —— 两者是互斥的。这就是开了它以后换歌颜色不再变的原因。",
@@ -1340,8 +1375,8 @@
         "platforms": "左边一列是全部平台。已经登录的那一行右端有头像；灰着的行不能选，悬停会写原因。",
         "code": "选中一个平台，右边就是它的登录方式。多数是一张二维码，用那个平台的手机应用扫；有的要先选方式，有的点一下按钮去浏览器里登录。",
         "steps": "右下角这一串小图标是登录走到哪一步：二维码、手机上确认、读到账号。",
-        "account": "已经登录的平台，这里是它的账号。「退出登录」只退这一个平台。",
-        "switch": "几个平台可以同时登录着。选中的不是正在用的那一个时，多出一颗切换按钮，把它换成正在用的平台；右下角那一枚跟着换。"
+        "account": "已经登录的平台，这里是它的账号。「退出登录」只退这一个平台，播放列表里也只移出它的歌。",
+        "switch": "几个平台可以同时登录着。选中的不是正在用的那一个时，多出一颗切换按钮，把它换成正在用的平台；右下角那一枚跟着换。换平台不动播放列表，几个平台的歌可以排在一起。"
       },
       "lyricMatch": {
         "where": "面板来源页的「在线匹配」打开这个窗口。标题下面写着正在给哪一首歌找歌词。",
@@ -1352,6 +1387,22 @@
         "save": "「保存」把选中的这一条用到这首歌上；「取消」什么都不改。",
         "switches": "给本地文件匹配时，封面下面多三个开关：「封面」「元数据」「歌词」。亮着的那一项用选中的这一条，关掉的保持文件自己的。",
         "noMatch": "左下角的「不使用在线数据」让这首歌只用文件自己的信息。"
+      },
+      "scratchpad": {
+        "hover": "指针停在一首歌的卡片上，右上角出现两颗按钮，左边这颗把它加入速记簿。网格的卡片、Bravais 的磁贴和聚焦卡、搜索结果的每一行都有这一对。",
+        "save": "右边那颗是收藏到歌单。能点喜欢的来源，选歌单的窗口第一行是「我喜欢的音乐」；也可以就地新建一个歌单再放进去。",
+        "notQueue": "加入速记簿不会动播放队列，正在放的照常放。左缘上部常驻一个小而半透明的记号；指针移过去，它展开成米白的标签，上面写着里面有几首。记号的样子在设置里换。",
+        "otherWays": "正在播的这首：按 : 进执行模式再按 S，就记下来了。集合页上的「全部加入速记簿」把这一页的歌一次收进来，筛选过就只收筛出来的；网格在信息栏里，Bravais 在信息条的「⋯ 更多」里。",
+        "open": "点把手，或者按 {{mod}} + J，打开速记簿；执行模式里是 J。再按一次就收起来。",
+        "groups": "里面的歌按来源分组：一个在线平台一组，本地一组，Navidrome 一组。从哪个歌单、哪次搜索收来的，写在每一行歌手后面。",
+        "groupActions": "组头右端是「本组全部入队」和「本组加入歌单…」。一个歌单只收一个来源的歌；按来源分了组，整组放进同一个歌单正好。",
+        "rowActions": "指针停在一行上，右端出现插进队列播放、加入队列、加入歌单、移出速记簿。入了队、进了歌单，这一行也还留着，不要了自己移出。",
+        "footer": "细纸带上面这一排：全部入队、用速记簿替换队列播放，以及清空。清空要连点两次。",
+        "history": "底部细纸带上的「播放历史」是第二页（点一下，它升到顶上当信息条，速记簿落到底部）：最近 7 天在这台设备上放过的歌（在线平台、本地、Navidrome），按天分段，新的在前，每首是一张小相片。每一行可以插进队列播放、加入队列、加入速记簿或收藏到歌单。",
+        "expand": "信息条右端那颗墨色的方钮是「展开整页」。",
+        "canvas": "展开整页之后整张纸斜着铺开：这一页的信息条横在上面，每首歌是一张笔记本卡，仍旧按来源分组，组头多一颗「选中本组」；右边一列是跳到栏和操作提示，另外两页收成细纸带压在左下角。Esc 先取消选择，没有选择时收回侧栏。",
+        "drag": "拖动卡片整理顺序。只能在自己那一组里挪，松手时吸附到最近的位置。触屏上先按住卡片，拿起来了再拖。",
+        "select": "在空白处拖出一个框，框住的卡片就选中了；按住 {{mod}} 点卡片可以逐张加减。选中的卡片旁边浮出一块板：入队、加入歌单、移出、取消选择。选中的来自不同来源时，加入歌单是灰的。"
       }
     }
   }
@@ -1377,7 +1428,7 @@
 
 这张表把第 3 节中的字幕正文连回实际目标脚本；指向区域是手画界面里的锚点，对应的区域标签同时列出。
 
-当前语言文件里有 152 个章节 key、382 个字幕 key；目标脚本直接引用的是 146 个章节和 372 个字幕。第 3 节保留全部原文，下面的映射表只列脚本当前直接引用的文案。
+当前语言文件里有 156 个章节 key、401 个字幕 key；目标脚本直接引用的是 150 个章节和 391 个字幕。第 3 节保留全部原文，下面的映射表只列脚本当前直接引用的文案。
 
 | 目标 ID | 场景 ID | 场景标题 | 字幕 key | 中文文案 | 指向区域 | 区域 label key |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -1398,7 +1449,7 @@
 | `bravais-seam` | `bravais-seam-collection` | 集合与歌手页的信息条 | `ponder.captions.bravaisSeam.collectionAbout` | 大标题下面是这一层的说明：歌单简介、专辑介绍。歌手页这一块是头像、名字和简介，排得像书勒口上的作者简介。正文长了会截断，点一下展开。 | about：说明 | `ponder.anchors.bravaisSeam.about` |
 | `bravais-seam` | `bravais-seam-collection` | 集合与歌手页的信息条 | `ponder.captions.bravaisSeam.collectionActions` | 播放全部、加入队列，行尾的星标是收藏（能收藏的集合才有）。歌手页上这两颗只管热门歌曲。 | actions：播放与收藏 | `ponder.anchors.bravaisSeam.actions` |
 | `bravais-seam` | `bravais-seam-collection` | 集合与歌手页的信息条 | `ponder.captions.bravaisSeam.collectionList` | 「列表」把信息条加宽成歌曲列表，面包屑多出一级「列表」。悬停一行，墙上同一首的磁贴跟着亮起；单击转到它，双击播放。返回先关列表。 | linkedTile：墙上同一首 | `ponder.anchors.bravaisSeam.linkedTile` |
-| `bravais-seam` | `bravais-seam-home-navigation` | 首页：页签、二级切换与直达 | `ponder.captions.bravaisSeam.homeTabs` | 首页的信息条是一道窄缝：最上面是「书库」和折叠，下面竖排着一级页签——歌单、电台、专辑、本地、Navidrome。 | tabs：一级页签 | `ponder.anchors.bravaisSeam.tabs` |
+| `bravais-seam` | `bravais-seam-home-navigation` | 首页：页签、二级切换与直达 | `ponder.captions.bravaisSeam.homeTabs` | 首页的信息条是一道窄缝：最上面是「书库」和折叠，下面竖排着一级页签——歌单、推荐、专辑、本地、Navidrome。 | tabs：一级页签 | `ponder.anchors.bravaisSeam.tabs` |
 | `bravais-seam` | `bravais-seam-home-navigation` | 首页：页签、二级切换与直达 | `ponder.captions.bravaisSeam.homeFlip` | 换页签时整条信息条翻一次，墙也整面换成那一页的内容。键盘上 F6 / Shift + F6 轮换页签。 | tabLocal：本地 | `ponder.anchors.bravaisSeam.tabLocal` |
 | `bravais-seam` | `bravais-seam-home-navigation` | 首页：页签、二级切换与直达 | `ponder.captions.bravaisSeam.homeSections` | 本地和 Navidrome 多一列二级切换（文件夹、专辑、艺术家、歌单……）。只有选中的那项竖着写出名字，其余只留图标，悬停看全名。切换只换墙上的内容，不进新的一层。 | sections：二级切换 | `ponder.anchors.bravaisSeam.sections` |
 | `bravais-seam` | `bravais-seam-home-navigation` | 首页：页签、二级切换与直达 | `ponder.captions.bravaisSeam.homeShortcuts` | 下面那几列竖排小字是直达入口：我喜欢的音乐、私人 FM、全部歌曲……点它和点墙上那张卡一样，私人 FM 直接开播。地方不够时，它们挪进「⋯」。 | shortcuts：直达入口 | `ponder.anchors.bravaisSeam.shortcuts` |
@@ -1445,7 +1496,7 @@
 | `command-palette` | `command-palette-execute-mode` | 冒号进执行模式 | `ponder.captions.commandPalette.executeKeys` | 进去之后一个键就是一条命令：r 打乱队列、v 音量、o 设置、h 帮助。这些键互不构成前缀，所以按完立即执行。 | results：结果列表 | `ponder.anchors.commandPalette.results` |
 | `custom-shortcut-settings` | `custom-shortcut-key` | Alt 是印死的，你挑的是字母 | `ponder.captions.customShortcut.alt` | 左边固定为 Alt，右边录入字母。只支持 Alt + 字母。 | capAlt：Alt（固定） | `ponder.anchors.customShortcut.capAlt` |
 | `custom-shortcut-settings` | `custom-shortcut-key` | Alt 是印死的，你挑的是字母 | `ponder.captions.customShortcut.capture` | 点第二颗键帽开始录入，下次按下的字母会绑定。修饰键忽略，按 Esc 取消。 | capKey：你按的那颗字母 | `ponder.anchors.customShortcut.capKey` |
-| `custom-shortcut-settings` | `custom-shortcut-key` | Alt 是印死的，你挑的是字母 | `ponder.captions.customShortcut.taken` | 已被占用的字母不能绑定，红字会说明原因。S、Ctrl+K 和其他命令的快捷键都算占用。 | rejection：被退回的原因 | `ponder.anchors.customShortcut.rejection` |
+| `custom-shortcut-settings` | `custom-shortcut-key` | Alt 是印死的，你挑的是字母 | `ponder.captions.customShortcut.taken` | 已被占用的字母不能绑定，红字会说明原因。S、{{mod}}+K 和其他命令的快捷键都算占用。 | rejection：被退回的原因 | `ponder.anchors.customShortcut.rejection` |
 | `custom-shortcut-settings` | `custom-shortcut-key` | Alt 是印死的，你挑的是字母 | `ponder.captions.customShortcut.clear` | 录上之后键帽旁边会多一颗小小的 ✕，按它就把绑定清掉；在你重新录一颗之前，这条快捷键什么都不运行。 | clear：清除 | `ponder.anchors.customShortcut.clear` |
 | `custom-shortcut-settings` | `custom-shortcut-command` | 这份列表为什么更短 | `ponder.captions.customShortcut.filtered` | 下拉框只列出可在所有页面使用的命令；依赖特定页面或面板的命令不会出现。 | commandList：在哪儿都成立的命令 | `ponder.anchors.customShortcut.commandList` |
 | `custom-shortcut-settings` | `custom-shortcut-command` | 这份列表为什么更短 | `ponder.captions.customShortcut.goesQuiet` | 快捷键执行时还会再次检查条件。命令失效或按键被占用时，它不会改做别的事，只会失效。 | commandList：在哪儿都成立的命令 | `ponder.anchors.customShortcut.commandList` |
@@ -1459,7 +1510,7 @@
 | `folia-shortcuts` | `help-page-shortcuts` | 四个最常用的快捷键 | `ponder.captions.onboarding.shortcutK` | {{mod}} + K 打开命令窗口，功能和设置都可直接搜索。 | page：命令面板 | `ponder.anchors.pages.commandPalette` |
 | `folia-shortcuts` | `help-page-shortcuts` | 四个最常用的快捷键 | `ponder.captions.onboarding.shortcutP` | {{mod}} + P 打开播放队列；输入行可筛选，也支持 @artist: 等条件。 | page：命令面板 | `ponder.anchors.pages.commandPalette` |
 | `folia-shortcuts` | `help-page-shortcuts` | 四个最常用的快捷键 | `ponder.captions.onboarding.shortcutB` | {{mod}} + B 打开 Lattice；已在 Lattice 时返回。 | page：命令面板 | `ponder.anchors.pages.commandPalette` |
-| `folia-shortcuts` | `help-page-shortcuts` | 四个最常用的快捷键 | `ponder.captions.onboarding.shortcutG` | Ctrl + G 就是刚才那一下：打开当前页面的思索教程。任何时候迷路了，先按它。 | page：命令面板 | `ponder.anchors.pages.commandPalette` |
+| `folia-shortcuts` | `help-page-shortcuts` | 四个最常用的快捷键 | `ponder.captions.onboarding.shortcutG` | {{mod}} + G 就是刚才那一下：打开当前页面的思索教程。任何时候迷路了，先按它。 | page：命令面板 | `ponder.anchors.pages.commandPalette` |
 | `folia-transport` | `help-page-transport` | 不用切回来也能控制播放 | `ponder.captions.onboarding.mediaKeys` | Windows 用 SMTC，Linux 用 MPRIS；系统媒体键和媒体浮窗都可控制或显示当前歌曲。 | page：播放器 | `ponder.anchors.pages.player` |
 | `folia-transport` | `help-page-transport` | 不用切回来也能控制播放 | `ponder.captions.onboarding.inAppTransport` | Space 播放/暂停，{{mod}} + ←/→ 切歌；播放页 ←/→ 快退或快进 5 秒。更多操作用命令窗口。 | page：播放器 | `ponder.anchors.pages.player` |
 | `grid-action-button` | `grid-action-button-list` | 点一下开曲目列表 | `ponder.captions.gridActionButton.tap` | 集合页和海报墙右下角都有这颗按钮。点一下，曲目列表从右边切进来 —— 这是它的第一个动作。 | button：右下角那颗按钮 | `ponder.anchors.gridActionButton.button` |
@@ -1467,7 +1518,7 @@
 | `grid-action-button` | `grid-action-button-slide` | 往左滑是第二个动作 | `ponder.captions.gridActionButton.track` | 它背后还藏着一条向左的滑轨，平时看不见 —— 和播放页右缘那颗手柄是同一个手势。按住按钮往左拖。 | track：隐藏的滑轨 | `ponder.anchors.gridActionButton.track` |
 | `grid-action-button` | `grid-action-button-slide` | 往左滑是第二个动作 | `ponder.captions.gridActionButton.slideTarget` | 松手后打开本页筛选，也可在设置 · 快捷操作中改为命令窗口。 | filterBar：本页筛选 | `ponder.anchors.gridActionButton.slideTarget` |
 | `grid-page` | `grid-page-structure` | 页头的每个入口 | `ponder.captions.pages.gridHelp` | 左侧齿轮打开帮助页；有新版本时，更新提示也会出现在这里。Help 内仍可打开版本更新说明和本页 Ponder。 | help：Folia 与帮助入口 | `ponder.anchors.grid.help` |
-| `grid-page` | `grid-page-structure` | 页头的每个入口 | `ponder.captions.pages.gridTabs` | 中间页签切换歌单、电台、专辑、本地库、Navidrome 与 Stage。Lattice 图标只在已有播放队列时出现。 | tabs：内容来源页签 | `ponder.anchors.grid.tabs` |
+| `grid-page` | `grid-page-structure` | 页头的每个入口 | `ponder.captions.pages.gridTabs` | 中间页签切换歌单、推荐、专辑、本地库、Navidrome 与 Stage。Lattice 图标只在已有播放队列时出现。 | tabs：内容来源页签 | `ponder.anchors.grid.tabs` |
 | `grid-page` | `grid-page-structure` | 页头的每个入口 | `ponder.captions.pages.gridSearchBox` | 右侧是跨当前来源的歌曲搜索。输入后按 Enter 会进入搜索工作台；它不会筛选下方的集合海报。 | search：歌曲搜索 | `ponder.anchors.grid.search` |
 | `grid-page` | `grid-page-tabs` | 切换来源与专属操作 | `ponder.captions.pages.gridTabResult` | 切换页签后，下方 3D 轨道会换成该来源的集合，并记住各来源最后聚焦的位置。 | tabs：内容来源页签 | `ponder.anchors.grid.tabs` |
 | `grid-page` | `grid-page-tabs` | 切换来源与专属操作 | `ponder.captions.pages.gridSourceActions` | 这一组只在当前来源需要时出现，例如本地库的导入、刷新和播放列表导入，或服务器库的重新加载。 | sourceActions：来源专属操作 | `ponder.anchors.grid.sourceActions` |
@@ -1476,7 +1527,7 @@
 | `grid-page` | `grid-page-map` | 用地图总览全部集合 | `ponder.captions.pages.gridMap` | 点顶部「全部」打开 GridMap 查看所有集合；{{mod}} + F 或直接输入可筛选集合。 | map：全部集合地图 | `ponder.anchors.grid.map` |
 | `grid-page` | `grid-page-search` | 搜索歌曲而不是筛选海报 | `ponder.captions.pages.gridSearchResult` | 提交右上角搜索后会打开独立搜索工作台，结果按歌曲列出，可播放、打开艺人/专辑或加入队列。 | search：歌曲搜索 | `ponder.anchors.grid.search` |
 | `grid-page` | `grid-page-keyboard` | Grid3D 的全部页面快捷键 | `ponder.captions.pages.gridCardKeys` | ← / → 切换中央海报，Enter 打开当前集合；滚轮和水平拖动执行同样的焦点移动。 | shelf：3D 海报轨道 | `ponder.anchors.grid.shelf` |
-| `grid-page` | `grid-page-keyboard` | Grid3D 的全部页面快捷键 | `ponder.captions.pages.gridPageKeys` | Tab / Shift + Tab 切换页签；{{mod}} + K 命令；{{mod}} + B 进 Lattice（需有队列）；Ctrl + G 本页 Ponder。 | page：海报墙 | `ponder.anchors.pages.grid` |
+| `grid-page` | `grid-page-keyboard` | Grid3D 的全部页面快捷键 | `ponder.captions.pages.gridPageKeys` | Tab / Shift + Tab 切换页签；{{mod}} + K 命令；{{mod}} + B 进 Lattice（需有队列）；{{mod}} + G 本页 Ponder。 | page：海报墙 | `ponder.anchors.pages.grid` |
 | `grid-palette-hotkey` | `grid-palette-hotkey-owner` | 网格上的 S 归谁 | `ponder.captions.gridHotkey.off` | 在海报墙和集合页，按字母直接筛选；默认按 S 也是筛选，不会打开命令窗口。 | toggle：海报墙上用 S 键打开命令窗口 | `ponder.anchors.gridHotkey.toggle` |
 | `grid-palette-hotkey` | `grid-palette-hotkey-owner` | 网格上的 S 归谁 | `ponder.captions.gridHotkey.on` | 打开后，S 用于打开命令窗口，其他字母仍用于筛选。 | toggle：海报墙上用 S 键打开命令窗口 | `ponder.anchors.gridHotkey.toggle` |
 | `grid-view-card-settings` | `grid-view-card-cover` | 封面怎么占这张卡 | `ponder.captions.gridStyle.fullBleed` | 全画幅封面让集合页封面铺满卡片，歌名和歌手显示在渐变遮罩上。 | fullBleed：全画幅封面 | `ponder.anchors.gridViewCard.fullBleed` |
@@ -1499,12 +1550,12 @@
 | `grid-view-page` | `grid-view-page-activate` | 打开或播放卡片 | `ponder.captions.pages.gridViewKeys` | Enter 激活当前卡片；Esc 依次关闭内层状态、清除焦点，最后返回上一级。 | card：当前歌曲卡片 | `ponder.anchors.gridView.card` |
 | `grid3d-card-style` | `grid3d-card-style-options` | 两种卡片长什么样 | `ponder.captions.gridStyle.grid3dImage` | 「纯图片封面」让整张卡就是一张封面，歌单名压在封面底部的渐变里。 | optionImage：纯图片封面 | `ponder.anchors.grid3dCardStyle.image` |
 | `grid3d-card-style` | `grid3d-card-style-options` | 两种卡片长什么样 | `ponder.captions.gridStyle.grid3dCard` | 「拍立得卡片」是默认的样子：封面缩到上半部，下面留一条边写名称；封面不裁切，但每屏能放的卡片更少。 | optionCard：拍立得卡片 | `ponder.anchors.grid3dCardStyle.card` |
-| `help-page` | `help-page-overview` | 思索复杂操作和组件 | `ponder.captions.onboarding.overviewCtrlG` | 第一步：在任何页面按下 Ctrl + G，就能打开这一页的思索。 | page：一页界面 | `ponder.anchors.onboarding.page` |
+| `help-page` | `help-page-overview` | 思索复杂操作和组件 | `ponder.captions.onboarding.overviewCtrlG` | 第一步：在任何页面按下 {{mod}} + G，就能打开这一页的思索。 | page：一页界面 | `ponder.anchors.onboarding.page` |
 | `help-page` | `help-page-overview` | 思索复杂操作和组件 | `ponder.captions.onboarding.overviewWholePage` | 思索会一步一步讲解当前页面：上面有什么，各在哪里，可以怎么操作。你现在看的就是一段思索。 | page：一页界面 | `ponder.anchors.onboarding.page` |
 | `help-page` | `help-page-overview` | 思索复杂操作和组件 | `ponder.captions.onboarding.overviewHover` | 第二步：有些按钮和组件比较复杂。把指针停在上面，旁边会出现思索提示。 | capsule：悬停提示 | `ponder.anchors.onboarding.capsule` |
 | `help-page` | `help-page-overview` | 思索复杂操作和组件 | `ponder.captions.onboarding.overviewHold` | 第三步：看到提示后，按住 G 不放。进度走满后，会打开这个组件的思索；提前松手则取消。 | page：一页界面 | `ponder.anchors.onboarding.page` |
 | `help-page` | `help-page-overview` | 思索复杂操作和组件 | `ponder.captions.onboarding.overviewSettings` | 不需要这些提示时，可以在设置中关闭。点下方按钮可直接打开设置。 | page：一页界面 | `ponder.anchors.onboarding.page` |
-| `help-page` | `help-page-command-palette` | 命令面板 | `ponder.captions.onboarding.overviewCommandPalette` | 在任何界面，按 Ctrl + K 呼出命令面板。命令面板是应用的主要操作方式。使用命令面板可以在任何页面进行常用功能调整。 | input：输入行 | `ponder.anchors.commandPalette.input` |
+| `help-page` | `help-page-command-palette` | 命令面板 | `ponder.captions.onboarding.overviewCommandPalette` | 在任何界面，按 {{mod}} + K 呼出命令面板。命令面板是应用的主要操作方式。使用命令面板可以在任何页面进行常用功能调整。 | input：输入行 | `ponder.anchors.commandPalette.input` |
 | `help-page` | `help-page-command-examples` | 常用操作示例 | `ponder.captions.onboarding.overviewExampleVolume` | 例如在任何地方调节音量。 | volume：音量面板 | `ponder.anchors.playerBar.volumeSurface` |
 | `help-page` | `help-page-command-examples` | 常用操作示例 | `ponder.captions.onboarding.overviewExampleQueue` | 或者拉起队列搜索。 | queueSearch：队列窗口 | `ponder.anchors.queueCommand.panel` |
 | `help-page` | `help-page-command-examples` | 常用操作示例 | `ponder.captions.onboarding.overviewExampleFilter` | 或者直接对当前歌单进行二次检索，然后送入播放队列。 | playlistFilter：集合网格 | `ponder.anchors.pages.gridView` |
@@ -1583,7 +1634,7 @@
 | `lyric-match` | `lyric-match-local` | 本地歌曲多出来的三个开关 | `ponder.captions.lyricMatch.noMatch` | 左下角的「不使用在线数据」让这首歌只用文件自己的信息。 | noMatch：不使用在线数据 | `ponder.anchors.lyricMatch.noMatch` |
 | `lyric-style` | `lyric-style-per-style` | 每种样式有自己的设置 | `ponder.captions.lyricStyle.perStyleOwn` | 每种歌词样式都有一组专属设置，只对这个样式生效。右边这一页就是当前样式的那一组。 | rows：当前样式的设置 | `ponder.anchors.lyricStyle.rows` |
 | `lyric-style` | `lyric-style-per-style` | 每种样式有自己的设置 | `ponder.captions.lyricStyle.perStyleSwitch` | 换一种样式，预览和这一页设置一起整页换掉。不同样式的设置互不相通；旧样式调好的值会保留，换回去时还在。 | rows：当前样式的设置 | `ponder.anchors.lyricStyle.rows` |
-| `lyric-style` | `lyric-style-per-style` | 每种样式有自己的设置 | `ponder.captions.lyricStyle.perStyleWhere` | 在控制页点歌词样式那一行中间，弹出的那一格图底部的「更多设置」会直接打开这一页；也可以用下方按钮。 | tabs：四页 | `ponder.anchors.lyricStyle.tabs` |
+| `lyric-style` | `lyric-style-per-style` | 每种样式有自己的设置 | `ponder.captions.lyricStyle.perStyleWhere` | 在控制页点歌词样式那一行中间，弹出的那一格图底部的「更多设置」会直接打开这一页；也可以用下方按钮。 | tabs：五页 | `ponder.anchors.lyricStyle.tabs` |
 | `lyric-style` | `lyric-style-monet` | 莫奈：隐藏右侧部件 | `ponder.captions.lyricStyle.monetIntro` | 莫奈样式：左边歌词，右边肖像。最常见的问题是右边这几样东西怎么关。它们都在莫奈自己的设置里。 | preview：实时预览 | `ponder.anchors.lyricStyle.preview` |
 | `lyric-style` | `lyric-style-monet` | 莫奈：隐藏右侧部件 | `ponder.captions.lyricStyle.monetDescription` | 左下的文字是歌曲描述。关闭「显示歌曲描述」即可隐藏。 | monetDescription：歌曲描述 | `ponder.anchors.lyricStyle.monetDescription` |
 | `lyric-style` | `lyric-style-monet` | 莫奈：隐藏右侧部件 | `ponder.captions.lyricStyle.monetHanger` | 肖像上方的圆钮是拖拽调整按钮，用来挪动肖像。位置调好后，在「拖拽调整按钮」里把它隐藏。 | monetHanger：拖拽调整按钮 | `ponder.anchors.lyricStyle.monetHanger` |
@@ -1593,12 +1644,12 @@
 | `lyric-style` | `lyric-style-combine` | 背景和歌词样式各选各的 | `ponder.captions.lyricStyle.combineBackground` | 只换背景：歌词样式不动。背景自己的参数在歌词样式窗口的「背景」页。 | backgroundPictures：背景类型 | `ponder.anchors.lyricStyle.backgroundPictures` |
 | `lyric-style` | `lyric-style-combine` | 背景和歌词样式各选各的 | `ponder.captions.lyricStyle.combineStyle` | 再只换歌词样式：刚选的背景留着。任意背景都能配任意歌词样式；只有「静止」样式不渲染背景。 | preview：实时预览 | `ponder.anchors.lyricStyle.preview` |
 | `lyric-style` | `lyric-style-subtitle` | 通用底部副字幕 | `ponder.captions.lyricStyle.subtitleShared` | 多数歌词样式在底部共用这一条副字幕。莫奈、时计和静止把翻译排进自己的版面，不用这一条。 | subtitle：通用副字幕 | `ponder.anchors.lyricStyle.subtitle` |
-| `lyric-style` | `lyric-style-subtitle` | 通用底部副字幕 | `ponder.captions.lyricStyle.subtitleContent` | 它的设置在歌词样式窗口的「字幕」页，对所有使用它的样式一起生效。第二行选择显示翻译、罗马音、罗马音加翻译两行，或不显示。 | subtitleContent：第二行 | `ponder.anchors.lyricStyle.rowTwo` |
-| `lyric-style` | `lyric-style-subtitle` | 通用底部副字幕 | `ponder.captions.lyricStyle.subtitleBlur` | 关闭「非翻译歌词添加模糊效果」，副字幕就不再模糊。 | subtitleBlur：第五行 | `ponder.anchors.lyricStyle.rowFive` |
+| `lyric-style` | `lyric-style-subtitle` | 通用底部副字幕 | `ponder.captions.lyricStyle.subtitleContent` | 它的设置在歌词样式窗口的「字幕」页，对所有使用它的样式一起生效。可以显示单行、双行或三行，每行是当前句、下一句、翻译或罗马音。 | subtitleContent：第二行 | `ponder.anchors.lyricStyle.rowTwo` |
+| `lyric-style` | `lyric-style-subtitle` | 通用底部副字幕 | `ponder.captions.lyricStyle.subtitleBlur` | 关闭「下一句歌词添加模糊效果」，副字幕就不再模糊。 | subtitleBlur：第五行 | `ponder.anchors.lyricStyle.rowFive` |
 | `lyric-style` | `lyric-style-subtitle` | 通用底部副字幕 | `ponder.captions.lyricStyle.subtitleFont` | 关闭「字幕继承歌词字体」后，可以给字幕单独设置字体和字重；「字幕缩放」单独调整字号，随时可用。 | subtitleFollowsFont：字幕字体 | `ponder.anchors.lyricStyle.subtitleFont` |
 | `lyrics-animation-settings` | `lyrics-animation-entry` | 换歌词动画在哪儿换 | `ponder.captions.lyricsAnimation.where` | 设置 · 外观最上面这一行「歌词动画样式」是换歌词样式的入口，右端写着现在用的是哪一个。 | entry：歌词动画样式 | `ponder.anchors.lyricsAnimation.entry` |
 | `lyrics-animation-settings` | `lyrics-animation-entry` | 换歌词动画在哪儿换 | `ponder.captions.lyricsAnimation.playground` | 点开是歌词样式窗口。左边那一大块是实时预览，放的就是播放页真正会渲染出来的样子；右边那条窄栏才是设置。 | panel：设置 · 歌词动画 | `ponder.anchors.lyricsAnimation.panel` |
-| `lyrics-animation-settings` | `lyrics-animation-entry` | 换歌词动画在哪儿换 | `ponder.captions.lyricsAnimation.playgroundSections` | 样式在预览下面那一架图里选。右栏分为歌词动画、背景、通用、字幕四页，「歌词动画」页是所选样式的参数。 | panel：设置 · 歌词动画 | `ponder.anchors.lyricsAnimation.panel` |
+| `lyrics-animation-settings` | `lyrics-animation-entry` | 换歌词动画在哪儿换 | `ponder.captions.lyricsAnimation.playgroundSections` | 样式在预览下面那一架图里选。右栏分为歌词动画、背景、通用、字幕、全局五页，「歌词动画」页是所选样式的参数。 | panel：设置 · 歌词动画 | `ponder.anchors.lyricsAnimation.panel` |
 | `lyrics-settings` | `lyrics-settings-source` | 歌词从哪来 | `ponder.captions.lyricsSource.autoBest` | 「自动使用最佳歌词」会从网易云、AMLLDB、QQ 和酷狗匹配歌词，并可能覆盖来源页的手动选择。手动选择没有生效时，先检查这里。 | autoBest：自动使用最佳歌词 | `ponder.anchors.lyricsSource.autoBest` |
 | `lyrics-settings` | `lyrics-settings-source` | 歌词从哪来 | `ponder.captions.lyricsSource.priority` | 「本地歌曲歌词优先级」这一行的两段决定本地和在线的歌词谁优先。本地文件自带的歌词和在线检索到的同时存在时，按这里说的来。 | priorityLocal：本地优先 | `ponder.anchors.lyricsSource.priorityLocal` |
 | `lyrics-settings` | `lyrics-settings-offset` | 两个偏移量 | `ponder.captions.lyricsSource.globalOffset` | 「全局时间偏移」点进去是一整屏的标尺，调的是所有歌的歌词整体提前或延后多少 —— 一般用来补声卡或蓝牙的固定延迟。 | globalOffset：全局时间偏移 | `ponder.anchors.lyricsSource.globalOffset` |
@@ -1606,21 +1657,21 @@
 | `online-collection-actions` | `online-collection-actions-common` | 在线集合共用的操作 | `ponder.captions.onlineCollectionActions.common` | 在线与服务器集合都提供「播放全部」和「加入播放队列」。本页有筛选时，两颗按钮只处理筛选结果，并在文字里显示条数。 | playAll：全部播放 | `ponder.anchors.onlineCollectionActions.playAll` |
 | `online-collection-actions` | `online-collection-actions-provider` | 操作取决于当前来源 | `ponder.captions.onlineCollectionActions.provider` | 其余按钮由当前来源和集合类型决定：Navidrome 可能提供服务器歌单操作，在线专辑或歌单可能提供收藏、取消收藏或推荐管理。本地文件重扫和标签整理不会出现在这里。 | providerAction：来源专属操作 | `ponder.anchors.onlineCollectionActions.providerAction` |
 | `online-collection-actions` | `online-collection-actions-provider` | 操作取决于当前来源 | `ponder.captions.onlineCollectionActions.destructive` | 只有当前来源支持修改且这个集合允许操作时，才会显示删除或移除。它修改的是远端或服务器集合，不会删除本地音频文件。 | destructiveAction：删除或移除 | `ponder.anchors.onlineCollectionActions.destructiveAction` |
-| `panel-account-tab` | `panel-account-tab` | 账户页 | `ponder.captions.sidePanel.accountTab` | 账户页管的是当前音乐来源那一侧的事。 | tabs：标签页 | `ponder.anchors.sidePanel.tabs` |
-| `panel-account-tab` | `panel-account-tab` | 账户页 | `ponder.captions.sidePanel.accountTabDetail` | 账户页显示登录状态、默认音质和「同步数据」。没登录时，这里是一颗「去主页登录」。 | body：当前标签页内容 | `ponder.anchors.sidePanel.body` |
+| `panel-account-tab` | `panel-account-tab` | 音质页 | `ponder.captions.sidePanel.accountTab` | 音质页管的是当前音乐来源那一侧的事。 | tabs：标签页 | `ponder.anchors.sidePanel.tabs` |
+| `panel-account-tab` | `panel-account-tab` | 音质页 | `ponder.captions.sidePanel.accountTabDetail` | 音质页显示登录状态、默认音质和「同步数据」。没登录时，这里是一颗「去主页登录」。 | body：当前标签页内容 | `ponder.anchors.sidePanel.body` |
 | `panel-controls-tab` | `panel-controls-tab` | 控制页 | `ponder.captions.sidePanel.controlsTab` | 控制页最上面是音量一行，下面三格是循环、智能过渡和音频效果器：前两格点一下就开关，第三格打开一个窗口。 | tabs：标签页 | `ponder.anchors.sidePanel.tabs` |
-| `panel-controls-tab` | `panel-controls-tab` | 控制页 | `ponder.captions.sidePanel.controlsTabDetail` | 再往下是歌词样式、背景类型两行和「播放页透明背景」开关，最下面两行是主题：来源、当前主题、生成 AI 主题和明暗。音频增益与歌词偏移在来源页。 | body：当前标签页内容 | `ponder.anchors.sidePanel.body` |
+| `panel-controls-tab` | `panel-controls-tab` | 控制页 | `ponder.captions.sidePanel.controlsTabDetail` | 再往下是歌词样式、背景类型两行和「播放页透明背景」开关，最下面两行是主题：来源、当前主题、明暗和生成 AI 主题。音频增益与歌词偏移在来源页。 | body：当前标签页内容 | `ponder.anchors.sidePanel.body` |
 | `panel-controls-tab` | `panel-controls-tab-mode-list` | 全部样式藏在中间那颗按钮后面 | `ponder.captions.sidePanel.controlsSteppers` | 这两行选的是歌词样式和背景类型。两端那对箭头一次只换到相邻的一个 —— 十来个样式排着，这么翻要翻很久。 | modeRow：歌词样式那一行 | `ponder.anchors.sidePanel.modeRow` |
 | `panel-controls-tab` | `panel-controls-tab-mode-list` | 全部样式藏在中间那颗按钮后面 | `ponder.captions.sidePanel.controlsModeList` | 点中间那一块，弹出一格图，直接点想要的那一张。 | modeList：全部样式 | `ponder.anchors.sidePanel.modeList` |
 | `panel-controls-tab` | `panel-controls-tab-mode-list` | 全部样式藏在中间那颗按钮后面 | `ponder.captions.sidePanel.controlsModeListFooter` | 这一格图最底下那一条不是又一张图 ——「更多设置」打开的是这一行对应的完整设置，调参就在那儿。 | modeListFooter：更多设置 | `ponder.anchors.sidePanel.modeListFooter` |
 | `panel-cover-actions` | `panel-cover-actions-reveal` | 这首歌的三个动作 | `ponder.captions.panelCoverActions.appear` | 封面页上，歌名下面这一行一直在：左边是这首歌的几个动作，右端是回到首页和设置。换到别的页，这一行收起来，只在顶上留一颗喜欢。 | coverActions：这一行动作 | `ponder.anchors.sidePanel.coverActions` |
 | `panel-cover-actions` | `panel-cover-actions-reveal` | 这首歌的三个动作 | `ponder.captions.panelCoverActions.like` | 心形是喜欢这首歌。当前来源做不了这件事时它是灰的，指针停上去会写明原因。 | coverLike：喜欢 | `ponder.anchors.sidePanel.coverLike` |
-| `panel-cover-actions` | `panel-cover-actions-reveal` | 这首歌的三个动作 | `ponder.captions.panelCoverActions.addToPlaylist` | 星形那颗把当前这首加进歌单。只有当前来源支持歌单时它才在；加不了的时候它是灰的，指针停上去会写明原因。 | coverPlaylist：加入歌单 | `ponder.anchors.sidePanel.coverPlaylist` |
+| `panel-cover-actions` | `panel-cover-actions-reveal` | 这首歌的三个动作 | `ponder.captions.panelCoverActions.addToPlaylist` | 星形那颗把当前这首收藏到歌单，第一行是「我喜欢」（红心）。来源既不支持歌单也不支持红心时它是灰的，指针停上去会写明原因。 | coverPlaylist：加入歌单 | `ponder.anchors.sidePanel.coverPlaylist` |
 | `panel-cover-actions` | `panel-cover-actions-reveal` | 这首歌的三个动作 | `ponder.captions.panelCoverActions.playingFrom` | 队列是从某张歌单或专辑开始播的，这里就多一枚写着它名字的按钮：点一下回到那一页，并找到这首歌。队列换成别的歌之后它就不在了。 | coverSource：播放自 | `ponder.anchors.sidePanel.coverSource` |
 | `panel-cover-actions` | `panel-cover-actions-right` | 右端：首页和设置 | `ponder.captions.panelCoverActions.home` | 右端的房子回到首页的海报墙，面板会先收起。播放不会中断。 | coverHome：回到首页 | `ponder.anchors.sidePanel.coverHome` |
 | `panel-cover-actions` | `panel-cover-actions-right` | 右端：首页和设置 | `ponder.captions.panelCoverActions.settings` | 齿轮打开设置。按下去面板会先收起来，再把设置窗口铺上来。 | coverSettings：打开设置 | `ponder.anchors.sidePanel.coverSettings` |
 | `panel-cover-tab` | `panel-cover-tab` | 封面页 | `ponder.captions.sidePanel.coverTab` | 封面页就是这首歌：大封面，下面是歌名、歌手和专辑，再下面一行动作。这一页没有别的内容。 | tabs：标签页 | `ponder.anchors.sidePanel.tabs` |
-| `panel-cover-tab` | `panel-cover-tab` | 封面页 | `ponder.captions.sidePanel.coverTabDetail` | 点击歌手或专辑可进入对应集合。点击歌名复制歌曲信息，按住 Ctrl 点击可打开来源页面。 | credits：歌名、歌手、专辑 | `ponder.anchors.sidePanel.credits` |
+| `panel-cover-tab` | `panel-cover-tab` | 封面页 | `ponder.captions.sidePanel.coverTabDetail` | 点击歌手或专辑可进入对应集合。点击歌名复制歌曲信息，按住 {{mod}} 点击可打开来源页面。 | credits：歌名、歌手、专辑 | `ponder.anchors.sidePanel.credits` |
 | `panel-queue-tab` | `panel-queue-tab` | 播放列表页 | `ponder.captions.sidePanel.queueTab` | 播放列表页是当前播放队列的完整列表，顶上一行写着队列里有多少首。 | tabs：标签页 | `ponder.anchors.sidePanel.tabs` |
 | `panel-queue-tab` | `panel-queue-tab` | 播放列表页 | `ponder.captions.sidePanel.queueTabDetail` | 点击歌曲即可播放；悬停后可移到下一首、移到队尾或移除。顶部按钮可打开 Lattice 或打乱队列。这里不能拖动排序。 | body：当前标签页内容 | `ponder.anchors.sidePanel.body` |
 | `panel-queue-tab` | `panel-queue-tab-radio` | 私人 FM 下这一格是电台 | `ponder.captions.sidePanel.queueRadio` | 私人 FM 播放时，这一页会变成电台面板，不再显示队列。 | tabs：标签页 | `ponder.anchors.sidePanel.tabs` |
@@ -1650,38 +1701,43 @@
 | `player-bar` | `player-bar-basics` | 这条胶囊上有什么 | `ponder.captions.playerBar.basicsIntro` | 播放控制只有这一条胶囊；上一首、下一首、随机、循环和音量都不常驻。 | bar：底部控制条 | `ponder.anchors.playerBar.bar` |
 | `player-bar` | `player-bar-basics` | 这条胶囊上有什么 | `ponder.captions.playerBar.basicsPlay` | 整条上唯一永远在的按钮是播放 / 暂停。宽屏时它在最左端；窄到一行放不下时，它落到第二行正中，两个槽位分列两侧。 | play：播放 / 暂停 | `ponder.anchors.playerBar.play` |
 | `player-bar` | `player-bar-basics` | 这条胶囊上有什么 | `ponder.captions.playerBar.basicsTitle` | 悬停歌名，两侧会显示上一首和下一首；点箭头切歌。 | title：曲目标题 | `ponder.anchors.playerBar.title` |
-| `player-bar` | `player-bar-basics` | 这条胶囊上有什么 | `ponder.captions.playerBar.basicsProgress` | 进度条就地拖动或点击跳转。点胶囊其他任何地方不是暂停，而是进入播放页；在 Lattice 上则是把视野拉回当前这首。 | progress：进度条 | `ponder.anchors.playerBar.progress` |
-| `player-bar` | `player-bar-basics` | 这条胶囊上有什么 | `ponder.captions.playerBar.basicsSlots` | 剩下的功能都归右边这两个位置。十个动作里你挑两个放上去，别的一律不在条上 —— 这就是这里没有一排固定按钮的原因。 | slots：两个槽位 | `ponder.anchors.playerBar.slots` |
+| `player-bar` | `player-bar-basics` | 这条胶囊上有什么 | `ponder.captions.playerBar.basicsProgress` | 进度条就地拖动或点击跳转。点胶囊其他地方不是暂停：平时是去播放页，播放入口设成 Lattice 时去 Lattice（私人 FM 时仍是播放页）；人已经在播放页、这一下又不去 Lattice 时，改成打开命令窗口；在 Lattice 上则是把视野拉回当前这首。 | progress：进度条 | `ponder.anchors.playerBar.progress` |
+| `player-bar` | `player-bar-basics` | 这条胶囊上有什么 | `ponder.captions.playerBar.basicsSlots` | 剩下的功能都归右边这两个位置，放什么由你挑，右键或按住就能就地换。别的都不在条上，常用的几样指针停一下会浮在胶囊上方。 | slots：两个槽位 | `ponder.anchors.playerBar.slots` |
 | `player-bar` | `player-bar-basics` | 这条胶囊上有什么 | `ponder.captions.playerBar.basicsCollapsed` | 移开指针，整条收回成一根进度条。你平时看到的是这个形态，需要控制时靠近它就会展开。 | bar：底部控制条 | `ponder.anchors.playerBar.bar` |
 | `player-bar` | `player-bar-basics` | 这条胶囊上有什么 | `ponder.captions.playerBar.basicsAutoExpand` | 暂停且不在首页时，控制条会自动展开。恢复播放或回到首页后，它会收起。 | bar：底部控制条 | `ponder.anchors.playerBar.bar` |
+| `player-bar` | `player-bar-quick-actions` | 停一下，浮出快捷操作 | `ponder.captions.playerBar.quickIntro` | 指针在胶囊上停一下，上方会浮出一排和这首歌有关的操作：音量、喜爱、加到歌单、打乱、字幕、歌词样式。已经放在右边两个按钮里的不会重复。触屏上点开胶囊、或者一暂停，这一排就直接浮出（不含音量），4 秒没碰就收起。 | quickActions：快捷操作 | `ponder.anchors.playerBar.quickActions` |
+| `player-bar` | `player-bar-quick-actions` | 停一下，浮出快捷操作 | `ponder.captions.playerBar.quickPalette` | 最右边那个打开命令窗口。它从胶囊原地长出来：输入框落在胶囊的位置，最匹配的结果紧挨着它。 | capsulePalette：命令窗口 | `ponder.anchors.playerBar.capsulePalette` |
+| `player-bar` | `player-bar-quick-actions` | 停一下，浮出快捷操作 | `ponder.captions.playerBar.quickOther` | 在播放页点胶囊的空白处也会这样打开，触屏上要等这一排浮着时再点一下（播放入口设成 Lattice 时，这一下去 Lattice）；按 {{mod}} + K 时只要胶囊在屏幕上，同样从它长出来。关掉时它缩回胶囊。 | capsulePalette：命令窗口 | `ponder.anchors.playerBar.capsulePalette` |
 | `player-bar` | `player-bar-height` | 整条的高度可以改 | `ponder.captions.playerBar.heightIntro` | 这条控制条离屏幕底边有多远是可以改的，各页面的歌曲卡片和侧边面板会跟着一起动。 | bar：底部控制条 | `ponder.anchors.playerBar.bar` |
 | `player-bar` | `player-bar-height` | 整条的高度可以改 | `ponder.captions.playerBar.heightSettings` | 入口在设置 → 播放页 → 控制栏。滑杆调整高度，「在播放页拖动调整」允许直接拖动控制条；命令窗口也能打开同一设置。 | settings：设置 · 控制栏 | `ponder.anchors.playerBar.bottomUiSettings` |
 | `player-bar` | `player-bar-height` | 整条的高度可以改 | `ponder.captions.playerBar.heightDrag` | 进了拖动调整之后，按住胶囊任意位置上下拖。松手即生效，而且会被记住。 | raised | — |
-| `player-bar` | `player-bar-slots` | 右边两个位置可以换 | `ponder.captions.playerBar.slotsIntro` | 进度条右边这两个按钮不是固定的，两个位置各自独立。 | slots：两个槽位 | `ponder.anchors.playerBar.slots` |
-| `player-bar` | `player-bar-slots` | 右边两个位置可以换 | `ponder.captions.playerBar.slotsWhere` | 在设置里挑：循环、随机、喜爱、队列、音量、睡眠定时等十个动作里任选，选完立刻生效。 | picker：设置里的选择器 | `ponder.anchors.playerBar.picker` |
-| `player-bar` | `player-bar-shuffle` | 随机只洗一次牌 | `ponder.captions.playerBar.shuffleIntro` | 这个随机和别处的不一样 —— 它不是一个开着就一直生效的模式。 | primarySlot：第一个槽位 | `ponder.anchors.playerBar.primarySlot` |
-| `player-bar` | `player-bar-shuffle` | 随机只洗一次牌 | `ponder.captions.playerBar.shuffleOnce` | 按一下，Folia 把当前队列原地洗一次牌，洗完这个顺序就定下来了。想换个顺序就再按一次。 | queue：播放队列 | `ponder.anchors.playerBar.queue` |
+| `player-bar` | `player-bar-slots` | 右边两个按钮可以就地换 | `ponder.captions.playerBar.slotsIntro` | 进度条右边这两个按钮不是固定的，两个位置各自独立。 | slots：两个槽位 | `ponder.anchors.playerBar.slots` |
+| `player-bar` | `player-bar-slots` | 右边两个按钮可以就地换 | `ponder.captions.playerBar.slotsHold` | 在按钮上按住，外圈画满就松开；或者直接右键。 | primarySlot：第一个槽位 | `ponder.anchors.playerBar.primarySlot` |
+| `player-bar` | `player-bar-slots` | 右边两个按钮可以就地换 | `ponder.captions.playerBar.slotsPick` | 按钮正上方弹出能放的动作，点一个就换上；选另一侧正放着的那个，两边互换。设置里也能改，下面的按钮直达。 | picker：换按钮的浮层 | `ponder.anchors.playerBar.picker` |
+| `player-bar` | `player-bar-slots` | 右边两个按钮可以就地换 | `ponder.captions.playerBar.slotsSuggest` | 在命令窗口里常用、又能放上来的动作，进度条上方会问你一次要不要换上。 | slots：两个槽位 | `ponder.anchors.playerBar.slots` |
+| `player-bar` | `player-bar-shuffle` | 打乱队列只洗一次牌 | `ponder.captions.playerBar.shuffleIntro` | 这颗是「随机队列」，和循环按钮上的随机不是一回事：它不切换模式，只把当前队列洗一次牌。 | primarySlot：第一个槽位 | `ponder.anchors.playerBar.primarySlot` |
+| `player-bar` | `player-bar-shuffle` | 打乱队列只洗一次牌 | `ponder.captions.playerBar.shuffleOnce` | 按一下，Folia 把当前队列原地洗一次牌，洗完这个顺序就定下来了。想换个顺序就再按一次。 | queue：播放队列 | `ponder.anchors.playerBar.queue` |
 | `player-bar` | `player-bar-volume` | 音量在命令面板里 | `ponder.captions.playerBar.volumeIntro` | 底部控制条上没有常驻的音量滑块。 | primarySlot：第一个槽位 | `ponder.anchors.playerBar.primarySlot` |
 | `player-bar` | `player-bar-volume` | 音量在命令面板里 | `ponder.captions.playerBar.volumeOpens` | 按这里打开的是命令面板里的音量面板，不是就地弹一个小滑块。 | volumeSurface：音量面板 | `ponder.anchors.playerBar.volumeSurface` |
 | `player-page` | `player-page-layout` | 页面上有什么、各在哪 | `ponder.captions.pages.playerLayout` | 播放页全屏显示歌词和可视化；入口只有底部控制条、右侧手柄和展开后的面板。 | page：播放器 | `ponder.anchors.pages.player` |
 | `player-page` | `player-page-layout` | 页面上有什么、各在哪 | `ponder.captions.pages.playerLyrics` | 中间这块是歌词与可视化。它不是控件：点它等于点背景，只切换控制条的显隐，不会暂停。 | lyrics：歌词与可视化 | `ponder.anchors.playerPage.lyrics` |
 | `player-page` | `player-page-layout` | 页面上有什么、各在哪 | `ponder.captions.pages.playerBarWhere` | 控制条浮在屏幕底部正中，不贴边。左端是播放/暂停，中间是歌名和进度条，右端两个位置放什么由你决定。 | bar：底部控制条 | `ponder.anchors.playerPage.bar` |
 | `player-page` | `player-page-layout` | 页面上有什么、各在哪 | `ponder.captions.pages.playerToggleWhere` | 侧边手柄贴在屏幕右缘，底边和控制条对齐。它是一颗圆按钮，按一下展开右侧控制面板。 | toggle：侧边手柄 | `ponder.anchors.playerPage.toggle` |
-| `player-page` | `player-page-layout` | 页面上有什么、各在哪 | `ponder.captions.pages.playerPanelWhere` | 面板从手柄上方展开，贴着右侧。打开时是这首歌的封面页，最底下一排是封面、控制、播放列表、账户等标签页。 | panel：控制面板 | `ponder.anchors.playerPage.panel` |
+| `player-page` | `player-page-layout` | 页面上有什么、各在哪 | `ponder.captions.pages.playerPanelWhere` | 面板从手柄上方展开，贴着右侧。打开时是这首歌的封面页，最底下一排是封面、控制、播放列表、音质等标签页。 | panel：控制面板 | `ponder.anchors.playerPage.panel` |
 | `player-page` | `player-page-open-palette` | 叫出命令窗口 | `ponder.captions.pages.playerPaletteSlide` | 手柄背后还藏着一条向左的滑轨。按住手柄往左拖，越过判定线再松手，打开的是命令窗口，不是面板。 | track：隐藏的滑轨 | `ponder.anchors.playerPage.track` |
-| `player-page` | `player-page-open-palette` | 叫出命令窗口 | `ponder.captions.pages.playerPaletteOpened` | 命令窗口从屏幕上方落下，水平居中。Folia 把「找功能」这件事全部收在这里。 | palette：命令窗口 | `ponder.anchors.playerPage.palette` |
-| `player-page` | `player-page-open-palette` | 叫出命令窗口 | `ponder.captions.pages.playerPaletteOtherWays` | {{mod}} + K 可随时打开命令窗口。播放页焦点不在输入框时，按 S 也可以；触屏先点右缘唤出手柄。 | palette：命令窗口 | `ponder.anchors.playerPage.palette` |
+| `player-page` | `player-page-open-palette` | 叫出命令窗口 | `ponder.captions.pages.playerPaletteOpened` | 命令窗口从底部的控制条原地长出来：输入框在底，最匹配的结果紧挨着它；看不到控制条时，它从屏幕上方落下。Folia 把「找功能」这件事全部收在这里。 | palette：命令窗口 | `ponder.anchors.playerPage.palette` |
+| `player-page` | `player-page-open-palette` | 叫出命令窗口 | `ponder.captions.pages.playerPaletteOtherWays` | {{mod}} + K 可随时打开命令窗口。播放页焦点不在输入框时，按 S 也可以；点控制条的空白处也行（播放入口设成 Lattice 时，这一下去 Lattice）；触屏先点右缘唤出手柄。 | palette：命令窗口 | `ponder.anchors.playerPage.palette` |
 | `player-page` | `player-page-run-commands` | 在命令窗口里执行 | `ponder.captions.pages.playerCommandFilter` | 窗口开着就直接打字，它按名字、别名和关键词一起筛。↑↓ 选，Enter 执行 —— 不必先想清楚这条命令归在哪一类。 | palette：命令窗口 | `ponder.anchors.playerPage.palette` |
 | `player-page` | `player-page-run-commands` | 在命令窗口里执行 | `ponder.captions.pages.playerCommandArgument` | 需要参数的命令不会立刻跑。打完命令名按空格，它收成输入行里的一枚标签，光标留在后面等你补参数，补完再 Enter。 | palette：命令窗口 | `ponder.anchors.playerPage.palette` |
 | `player-page` | `player-page-run-commands` | 在命令窗口里执行 | `ponder.captions.pages.playerExecuteCloseFirst` | 执行模式要在命令窗口关闭时进入。先按 Esc 关掉窗口：窗口开着时按冒号，只会把冒号打进输入框。 | bar：底部控制条 | `ponder.anchors.playerPage.bar` |
 | `player-page` | `player-page-run-commands` | 在命令窗口里执行 | `ponder.captions.pages.playerExecuteMode` | 回到播放页，焦点不在输入框时按冒号，命令窗口会直接以执行模式打开。进入后按 r/v/o/h 执行命令。 | palette：命令窗口 | `ponder.anchors.playerPage.palette` |
-| `player-page` | `player-page-shuffle` | 常见问题：怎么随机播放 | `ponder.captions.pages.playerShuffleNoSwitch` | Folia 没有常驻的随机播放开关；它是一次操作，按下后会打乱当前队列。 | bar：底部控制条 | `ponder.anchors.playerPage.bar` |
+| `player-page` | `player-page-shuffle` | 常见问题：怎么随机播放 | `ponder.captions.pages.playerShuffleNoSwitch` | 随机播放就在控制条左端的循环按钮上：点一下依次切到列表循环、随机、单曲循环。右边那颗「随机队列」是另一回事 —— 一次操作，按下就把当前队列洗一次牌。 | bar：底部控制条 | `ponder.anchors.playerPage.bar` |
 | `player-page` | `player-page-shuffle` | 常见问题：怎么随机播放 | `ponder.captions.pages.playerShuffleHow` | 播放页按冒号进入执行模式，再按 r 打乱队列；再次执行可换顺序。 | palette：命令窗口 | `ponder.anchors.playerPage.palette` |
 | `player-page` | `player-page-shuffle` | 常见问题：怎么随机播放 | `ponder.captions.pages.playerShuffleSlot` | 如果你常用它，把「随机队列」放进控制条右边那两个位置之一，以后按一下就行。 | bar：底部控制条 | `ponder.anchors.playerPage.bar` |
 | `ponder-basics` | `help-page-ponder` | 你已经在思索里了 | `ponder.captions.onboarding.here` | 这是当前页面的思索教程，不是视频。进度条可拖，方向键切换关键帧，Space 暂停，Esc 退出。 | page：一页界面 | `ponder.anchors.onboarding.page` |
 | `ponder-basics` | `help-page-ponder` | 你已经在思索里了 | `ponder.captions.onboarding.hover` | 悬停在按钮或组件上会出现提示。按住 G，进度走满后打开对应教程。 | capsule：悬停提示 | `ponder.anchors.onboarding.capsule` |
 | `ponder-basics` | `help-page-ponder` | 你已经在思索里了 | `ponder.captions.onboarding.hold` | 按住不放，进度走满后打开教程；提前松手会取消。 | page：一页界面 | `ponder.anchors.onboarding.page` |
-| `ponder-basics` | `help-page-whole-page` | 整页的教程，以及触屏怎么办 | `ponder.captions.onboarding.wholePage` | 不想找组件也行：在任意页面上按住 Ctrl + G，打开的是整页的教程 —— 这一页上有什么、各在哪、能怎么操作。 | page：一页界面 | `ponder.anchors.onboarding.page` |
+| `ponder-basics` | `help-page-whole-page` | 整页的教程，以及触屏怎么办 | `ponder.captions.onboarding.wholePage` | 不想找组件也行：在任意页面上按住 {{mod}} + G，打开的是整页的教程 —— 这一页上有什么、各在哪、能怎么操作。 | page：一页界面 | `ponder.anchors.onboarding.page` |
 | `ponder-basics` | `help-page-whole-page` | 整页的教程，以及触屏怎么办 | `ponder.captions.onboarding.touchBulb` | 触屏没有悬停，所以用右上角灯泡打开本页教程。它出现几秒后会收起，点右上角可再次唤出。鼠标看不到它是正常的。 | touchBulb：触屏上的思索按钮 | `ponder.anchors.onboarding.touchBulb` |
 | `ponder-basics` | `help-page-hint-settings` | 看够了就把提示关掉 | `ponder.captions.onboarding.hintSettings` | 可在设置 · 通用关闭思索提示，或只提示未看过的区域。下方按钮可直接打开设置。 | page：设置 | `ponder.anchors.pages.settings` |
 | `queue-command-surface` | `queue-command-facets` | @ 把范围收窄 | `ponder.captions.queueCommand.whatItIs` | {{mod}} + P 打开队列窗口。输入即可筛选，↑↓选择，Enter 播放。 | input：输入行 | `ponder.anchors.queueCommand.input` |
@@ -1692,8 +1748,8 @@
 | `queue-command-surface` | `queue-command-batch` | -- 对筛出来的全部下手 | `ponder.captions.queueCommand.guards` | 没有搜索词或 @ 筛选时拒绝执行，避免清空队列；正在播放的歌曲会排除。 | preview：批量操作预览 | `ponder.anchors.queueCommand.preview` |
 | `queue-settings` | `queue-settings-behavior` | 加到末尾还是加到下一首 | `ponder.captions.queueSettings.append` | 这一行的两段决定「加入播放队列」到底加到哪儿。默认是追加到末尾，先听完手上排着的。 | append：追加到末尾 | `ponder.anchors.queueSettings.append` |
 | `queue-settings` | `queue-settings-behavior` | 加到末尾还是加到下一首 | `ponder.captions.queueSettings.next` | 选择后，新歌曲会插到当前歌曲后面。这个设置会影响卡片、队列行和命令窗口里的所有加入队列入口。 | next：追加到下一首 | `ponder.anchors.queueSettings.next` |
-| `queue-shuffle` | `queue-shuffle-no-mode` | 没有随机模式，只有打乱队列 | `ponder.captions.queueShuffle.noMode` | Folia 不提供传统的随机播放模式，循环按钮也不会切到随机。想随机听，就打乱当前队列。 | primarySlot：第一个槽位 | `ponder.anchors.playerBar.primarySlot` |
-| `queue-shuffle` | `queue-shuffle-no-mode` | 没有随机模式，只有打乱队列 | `ponder.captions.queueShuffle.once` | 打乱是一次操作：当前队列原地洗一次牌，之后按新顺序播放。想换个顺序，再打乱一次。 | queue：播放队列 | `ponder.anchors.playerBar.queue` |
+| `queue-shuffle` | `queue-shuffle-no-mode` | 循环按钮上的随机，和打乱队列不是一回事 | `ponder.captions.queueShuffle.noMode` | 循环按钮现在是四态：不循环、列表循环、随机、单曲循环。随机是常驻模式，开着就按随机顺序往下放；这里讲的是打乱队列 —— 一次性换掉队列顺序。 | primarySlot：第一个槽位 | `ponder.anchors.playerBar.primarySlot` |
+| `queue-shuffle` | `queue-shuffle-no-mode` | 循环按钮上的随机，和打乱队列不是一回事 | `ponder.captions.queueShuffle.once` | 打乱是一次操作：当前队列原地洗一次牌，之后按新顺序播放。想换个顺序，再打乱一次。 | queue：播放队列 | `ponder.anchors.playerBar.queue` |
 | `queue-shuffle` | `queue-shuffle-command` | 用命令打乱 | `ponder.captions.queueShuffle.command` | 最快的是命令：命令窗口关着、焦点不在输入框时按冒号进入执行模式，再按 r。也可以在命令窗口里搜「打乱队列」。 | palette：命令窗口 | `ponder.anchors.playerPage.palette` |
 | `queue-shuffle` | `queue-shuffle-slot` | 放进控制条按钮 | `ponder.captions.queueShuffle.slot` | 常用的话，在设置 · 播放页的「进度条右侧按钮」里选「随机队列」，控制条上就多一颗打乱按钮。 | primarySlot：第一个槽位 | `ponder.anchors.playerBar.primarySlot` |
 | `queue-shuffle` | `queue-shuffle-panel` | 队列面板上的按钮 | `ponder.captions.queueShuffle.panel` | 右侧控制面板的队列页，顶部最右那颗按钮也会打乱队列。 | queueShuffle：打乱队列 | `ponder.anchors.sidePanel.queueShuffle` |
@@ -1701,12 +1757,26 @@
 | `queue-shuffle` | `queue-shuffle-pinned` | 固定在命令窗口底部 | `ponder.captions.queueShuffle.pinRow` | 它会一直显示在命令窗口底部，打开窗口点一下就行。 | pinnedRow：固定的那三颗 | `ponder.anchors.pinnedCommands.pinnedRow` |
 | `replay-gain-settings` | `replay-gain-modes` | 三个模式 | `ponder.captions.replayGain.off` | 关闭后不使用文件里的 ReplayGain 标签，每首歌按原始音量播放。 | modeOff：关闭 | `ponder.anchors.replayGain.modeOff` |
 | `replay-gain-settings` | `replay-gain-modes` | 三个模式 | `ponder.captions.replayGain.trackAlbum` | 按单曲会让不同歌曲的响度更接近；按专辑会保留专辑内部的强弱变化。两种模式都只改播放音量，不改文件。 | modeAlbum：按专辑 | `ponder.anchors.replayGain.modeAlbum` |
-| `replay-gain-settings` | `replay-gain-mirrored` | 同一个值，两处入口 | `ponder.captions.replayGain.sameValue` | 控制面板来源页的三个按钮与这里共用同一个 ReplayGain 设置，改一处会同步另一处。 | panelModes：同样那三个模式 | `ponder.anchors.replayGain.panelModes` |
+| `replay-gain-settings` | `replay-gain-mirrored` | 同一个值，两处入口 | `ponder.captions.replayGain.sameValue` | 控制面板来源页的按钮与这里共用同一个 ReplayGain 设置，改一处会同步另一处。 | panelModes：同样那三个模式 | `ponder.anchors.replayGain.panelModes` |
 | `replay-gain-settings` | `replay-gain-mirrored` | 同一个值，两处入口 | `ponder.captions.replayGain.summary` | 来源页还会显示这首歌自带的单曲和专辑增益值；没有标签时写着「未检测到 ReplayGain」。 | panelSummary：这首歌的增益标签 | `ponder.anchors.replayGain.panelSummary` |
+| `scratchpad` | `scratchpad-collect` | 收进来 | `ponder.captions.scratchpad.hover` | 指针停在一首歌的卡片上，右上角出现两颗按钮，左边这颗把它加入速记簿。网格的卡片、Bravais 的磁贴和聚焦卡、搜索结果的每一行都有这一对。 | collect：加入速记簿 | `ponder.anchors.scratchpad.collect` |
+| `scratchpad` | `scratchpad-collect` | 收进来 | `ponder.captions.scratchpad.save` | 右边那颗是收藏到歌单。能点喜欢的来源，选歌单的窗口第一行是「我喜欢的音乐」；也可以就地新建一个歌单再放进去。 | save：收藏到歌单 | `ponder.anchors.scratchpad.save` |
+| `scratchpad` | `scratchpad-collect` | 收进来 | `ponder.captions.scratchpad.notQueue` | 加入速记簿不会动播放队列，正在放的照常放。左缘上部常驻一个小而半透明的记号；指针移过去，它展开成米白的标签，上面写着里面有几首。记号的样子在设置里换。 | handle：速记簿把手 | `ponder.anchors.scratchpad.handle` |
+| `scratchpad` | `scratchpad-collect` | 收进来 | `ponder.captions.scratchpad.otherWays` | 正在播的这首：按 : 进执行模式再按 S，就记下来了。集合页上的「全部加入速记簿」把这一页的歌一次收进来，筛选过就只收筛出来的；网格在信息栏里，Bravais 在信息条的「⋯ 更多」里。 | — | — |
+| `scratchpad` | `scratchpad-drawer` | 打开与分组 | `ponder.captions.scratchpad.open` | 点把手，或者按 {{mod}} + J，打开速记簿；执行模式里是 J。再按一次就收起来。 | drawer：速记簿 | `ponder.anchors.scratchpad.drawer` |
+| `scratchpad` | `scratchpad-drawer` | 打开与分组 | `ponder.captions.scratchpad.groups` | 里面的歌按来源分组：一个在线平台一组，本地一组，Navidrome 一组。从哪个歌单、哪次搜索收来的，写在每一行歌手后面。 | group：来源分组 | `ponder.anchors.scratchpad.group` |
+| `scratchpad` | `scratchpad-drawer` | 打开与分组 | `ponder.captions.scratchpad.groupActions` | 组头右端是「本组全部入队」和「本组加入歌单…」。一个歌单只收一个来源的歌；按来源分了组，整组放进同一个歌单正好。 | groupActions：整组操作 | `ponder.anchors.scratchpad.groupActions` |
+| `scratchpad` | `scratchpad-drawer` | 打开与分组 | `ponder.captions.scratchpad.rowActions` | 指针停在一行上，右端出现插进队列播放、加入队列、加入歌单、移出速记簿。入了队、进了歌单，这一行也还留着，不要了自己移出。 | rowActions：行内按钮 | `ponder.anchors.scratchpad.rowActions` |
+| `scratchpad` | `scratchpad-drawer` | 打开与分组 | `ponder.captions.scratchpad.footer` | 细纸带上面这一排：全部入队、用速记簿替换队列播放，以及清空。清空要连点两次。 | footer：对全部的操作 | `ponder.anchors.scratchpad.footer` |
+| `scratchpad` | `scratchpad-drawer` | 打开与分组 | `ponder.captions.scratchpad.history` | 底部细纸带上的「播放历史」是第二页（点一下，它升到顶上当信息条，速记簿落到底部）：最近 7 天在这台设备上放过的歌（在线平台、本地、Navidrome），按天分段，新的在前，每首是一张小相片。每一行可以插进队列播放、加入队列、加入速记簿或收藏到歌单。 | drawer：速记簿 | `ponder.anchors.scratchpad.drawer` |
+| `scratchpad` | `scratchpad-canvas` | 展开整页 | `ponder.captions.scratchpad.expand` | 信息条右端那颗墨色的方钮是「展开整页」。 | expand：展开整页 | `ponder.anchors.scratchpad.expand` |
+| `scratchpad` | `scratchpad-canvas` | 展开整页 | `ponder.captions.scratchpad.canvas` | 展开整页之后整张纸斜着铺开：这一页的信息条横在上面，每首歌是一张笔记本卡，仍旧按来源分组，组头多一颗「选中本组」；右边一列是跳到栏和操作提示，另外两页收成细纸带压在左下角。Esc 先取消选择，没有选择时收回侧栏。 | canvasGroup：画布里的一组 | `ponder.anchors.scratchpad.canvasGroup` |
+| `scratchpad` | `scratchpad-canvas` | 展开整页 | `ponder.captions.scratchpad.drag` | 拖动卡片整理顺序。只能在自己那一组里挪，松手时吸附到最近的位置。触屏上先按住卡片，拿起来了再拖。 | dragTo：吸附的位置 | `ponder.anchors.scratchpad.slot` |
+| `scratchpad` | `scratchpad-canvas` | 展开整页 | `ponder.captions.scratchpad.select` | 在空白处拖出一个框，框住的卡片就选中了；按住 {{mod}} 点卡片可以逐张加减。选中的卡片旁边浮出一块板：入队、加入歌单、移出、取消选择。选中的来自不同来源时，加入歌单是灰的。 | selection：对选中的操作 | `ponder.anchors.scratchpad.selection` |
 | `settings-page` | `settings-page-overview` | 设置按用途分组 | `ponder.captions.pages.settings` | 左侧按界面、音乐、应用和高级分组列出类别；右侧显示当前类别里的具体设置。 | page：设置 | `ponder.anchors.pages.settings` |
 | `settings-page` | `settings-page-direct-navigation` | 从命令直接跳转 | `ponder.captions.pages.settingsDirectNavigation` | 不必逐层翻找：在命令面板搜索设置名称，Folia 会直接打开对应分组并滚到准确位置。 | palette：命令面板 | `ponder.anchors.pages.commandPalette` |
 | `side-panel` | `side-panel-structure` | 面板里有什么 | `ponder.captions.sidePanel.cover` | 面板打开时是封面页：这首歌的大封面，下面是歌名、歌手和专辑，再下面一行是它的几个动作。 | cover：当前封面 | `ponder.anchors.sidePanel.cover` |
-| `side-panel` | `side-panel-structure` | 面板里有什么 | `ponder.captions.sidePanel.tabs` | 最底下一排是标签页：封面、控制、播放列表、账户；这首歌有来源信息时，封面后面多一个来源页，就是这里的第二格。装了带页面的模组，后面还会多出它的页。 | tabs：标签页 | `ponder.anchors.sidePanel.tabs` |
+| `side-panel` | `side-panel-structure` | 面板里有什么 | `ponder.captions.sidePanel.tabs` | 最底下一排是标签页：封面、控制、播放列表、音质；这首歌有来源信息时，封面后面多一个来源页，就是这里的第二格。装了带页面的模组，后面还会多出它的页。 | tabs：标签页 | `ponder.anchors.sidePanel.tabs` |
 | `side-panel` | `side-panel-structure` | 面板里有什么 | `ponder.captions.sidePanel.body` | 换到别的页，顶上那首歌收成一行，点它回到封面页；中间是这一页的内容。内容有多高面板就有多高，标签那一排一直在底边。 | body：当前标签页内容 | `ponder.anchors.sidePanel.body` |
 | `side-panel` | `side-panel-tabs` | 换标签页 | `ponder.captions.sidePanel.cycle` | 不必去点那一排小格子。面板开着时按 Tab，就在标签页之间往后循环一格。 | tabs：标签页 | `ponder.anchors.sidePanel.tabs` |
 | `side-panel` | `side-panel-tabs` | 换标签页 | `ponder.captions.sidePanel.cycleReverse` | Shift + Tab 往回一格。循环只在当前真的有的那几页之间走 —— 来源不同，页数也不同。 | tabs：标签页 | `ponder.anchors.sidePanel.tabs` |
@@ -1715,8 +1785,8 @@
 | `sign-in` | `sign-in-window` | 选平台，再登录 | `ponder.captions.signIn.platforms` | 左边一列是全部平台。已经登录的那一行右端有头像；灰着的行不能选，悬停会写原因。 | platforms：平台 | `ponder.anchors.signIn.platforms` |
 | `sign-in` | `sign-in-window` | 选平台，再登录 | `ponder.captions.signIn.code` | 选中一个平台，右边就是它的登录方式。多数是一张二维码，用那个平台的手机应用扫；有的要先选方式，有的点一下按钮去浏览器里登录。 | tile：二维码 | `ponder.anchors.signIn.tile` |
 | `sign-in` | `sign-in-window` | 选平台，再登录 | `ponder.captions.signIn.steps` | 右下角这一串小图标是登录走到哪一步：二维码、手机上确认、读到账号。 | steps：步骤 | `ponder.anchors.signIn.steps` |
-| `sign-in` | `sign-in-account` | 登录之后 | `ponder.captions.signIn.account` | 已经登录的平台，这里是它的账号。「退出登录」只退这一个平台。 | account：账号 | `ponder.anchors.signIn.account` |
-| `sign-in` | `sign-in-account` | 登录之后 | `ponder.captions.signIn.switch` | 几个平台可以同时登录着。选中的不是正在用的那一个时，多出一颗切换按钮，把它换成正在用的平台；右下角那一枚跟着换。 | actions：切换与退出 | `ponder.anchors.signIn.actions` |
+| `sign-in` | `sign-in-account` | 登录之后 | `ponder.captions.signIn.account` | 已经登录的平台，这里是它的账号。「退出登录」只退这一个平台，播放列表里也只移出它的歌。 | account：账号 | `ponder.anchors.signIn.account` |
+| `sign-in` | `sign-in-account` | 登录之后 | `ponder.captions.signIn.switch` | 几个平台可以同时登录着。选中的不是正在用的那一个时，多出一颗切换按钮，把它换成正在用的平台；右下角那一枚跟着换。换平台不动播放列表，几个平台的歌可以排在一起。 | actions：切换与退出 | `ponder.anchors.signIn.actions` |
 | `theme-park` | `theme-park-target` | 你在编辑哪一份主题 | `ponder.captions.themePark.which` | 标题旁边这一对切换当前编辑的主题：这首歌的 AI 主题，或你保存的自定义主题。两边草稿互不影响，保存只作用于当前选中的那一份。 | targetToggle：在编辑哪一份 | `ponder.anchors.themePark.targetToggle` |
 | `theme-park` | `theme-park-target` | 你在编辑哪一份主题 | `ponder.captions.themePark.reset` | 重置丢掉的是你这一次改的东西，把草稿退回刚打开时的样子。它不碰已经保存下来的那一份。 | reset：重置 | `ponder.anchors.themePark.reset` |
 | `theme-park` | `theme-park-colors` | 亮和暗是两份配色 | `ponder.captions.themePark.twoSides` | 亮色和暗色分别保存。切换这一项后，下面的颜色、取色器和 HEX 输入框都会跟着切换。 | modeToggle：亮 / 暗 | `ponder.anchors.themePark.modeToggle` |
@@ -1728,7 +1798,7 @@
 | `theme-settings` | `theme-settings-presets` | 预设与自定义 | `ponder.captions.themeSettings.presetDefault` | 「配色主题预设」左边一段是内置的「墨染 / 素白」，跟着明暗模式在深色和浅色之间自动换。 | presetDefault：内置预设 | `ponder.anchors.themeSettings.presetDefault` |
 | `theme-settings` | `theme-settings-presets` | 预设与自定义 | `ponder.captions.themeSettings.presetCustom` | 右边一段是自定义配色。还没有自定义主题时它是灰的、按不动；有了之后选中它，播放页、卡片和面板都会换成这套颜色。 | presetCustom：自定义配色 | `ponder.anchors.themeSettings.presetCustom` |
 | `theme-settings` | `theme-settings-source` | 配色从哪来 | `ponder.captions.themeSettings.source` | 「主题生成来源」在下面「歌曲主题」那一组：AI 推断或封面取色。没有配置 API Key 时，这一行下面会多出一句提示和一颗去配置的按钮。 | source：主题生成来源 | `ponder.anchors.themeSettings.source` |
-| `theme-settings` | `theme-settings-source` | 配色从哪来 | `ponder.captions.themeSettings.themePark` | 「打开 Theme Park」这一行打开配色编辑窗口，左侧是实时预览。 | panel：设置 · 主题 | `ponder.anchors.themeSettings.panel` |
+| `theme-settings` | `theme-settings-source` | 配色从哪来 | `ponder.captions.themeSettings.themePark` | 「打开主题乐园」这一行打开配色编辑窗口，左侧是实时预览。 | panel：设置 · 主题 | `ponder.anchors.themeSettings.panel` |
 | `theme-settings` | `theme-settings-source` | 配色从哪来 | `ponder.captions.themeSettings.themeParkTabs` | 右栏有配色、信息、内容、AI 四页。配色页分别保存亮暗两套颜色；AI 页复制提示词，再把 AI 写回的 JSON 导入草稿。 | panel：设置 · 主题 | `ponder.anchors.themeSettings.panel` |
 | `theme-settings` | `theme-settings-auto` | 配色什么时候自己变 | `ponder.captions.themeSettings.followSystem` | 「明暗模式」有三段：浅色、深色、跟随系统。选跟随系统，应用按系统的设置自动切换明暗。 | brightness：明暗模式 | `ponder.anchors.themeSettings.followSystem` |
 | `theme-settings` | `theme-settings-auto` | 配色什么时候自己变 | `ponder.captions.themeSettings.autoSwitch` | 「主题自动切换」会在播放有缓存主题的歌曲时应用它；打开它下面缩进的那一行，没有缓存的歌曲也会自动生成主题。 | autoSwitch：主题自动切换 | `ponder.anchors.themeSettings.autoSwitch` |
@@ -1741,15 +1811,15 @@
 | `vis-playground` | `vis-playground-layout` | 左边是真的在跑的预览 | `ponder.captions.visPlayground.pause` | 预览右上角那颗按钮把画面停在当前这一帧，再点一下继续。调那种只闪一下的效果时用得上，也让预览在你读字的时候不再吃算力。 | pause：暂停预览 | `ponder.anchors.visPlayground.pause` |
 | `vis-playground` | `vis-playground-hotspots` | 三块你看不见的区域 | `ponder.captions.visPlayground.invisible` | 预览上有三块隐藏点击区，没有边框、底色或标签。 | preview：实时预览 | `ponder.anchors.visPlayground.preview` |
 | `vis-playground` | `vis-playground-hotspots` | 三块你看不见的区域 | `ponder.captions.visPlayground.three` | 指针扫过去它们才显形：顶上一条是背景，中间一大块是歌词动画，底下一条是字幕。 | hotspotVisualizer：歌词动画那一块 | `ponder.anchors.visPlayground.hotspotVisualizer` |
-| `vis-playground` | `vis-playground-hotspots` | 三块你看不见的区域 | `ponder.captions.visPlayground.jumps` | 点其中一块，右边设置栏就跳到对应那一页。这是这一屏里最快的走法 —— 指着画面上你想改的那部分，而不是去读标签的名字。 | tabs：四页 | `ponder.anchors.visPlayground.tabs` |
-| `vis-playground` | `vis-playground-common` | 四页各管什么，以及「通用」里有什么 | `ponder.captions.visPlayground.four` | 设置栏一共四页：歌词动画、背景、通用、字幕。热区指向的就是其中三页，所以标签和画面是同一份清单的两个入口。 | tabs：四页 | `ponder.anchors.visPlayground.tabs` |
-| `vis-playground` | `vis-playground-common` | 四页各管什么，以及「通用」里有什么 | `ponder.captions.visPlayground.common` | 只有一个例外：「通用」没有自己的热区，因为它不是画面的一部分 —— 它装的是作用于整屏的那些。那一页只能从这排标签进。 | tabCommon：通用 | `ponder.anchors.visPlayground.tabCommon` |
-| `vis-playground` | `vis-playground-common` | 四页各管什么，以及「通用」里有什么 | `ponder.captions.visPlayground.fonts` | 「通用」设置歌词字体、字号和字重。字重默认自动，也可手动指定。 | rowTwo：第二行 | `ponder.anchors.visPlayground.rowTwo` |
-| `vis-playground` | `vis-playground-common` | 四页各管什么，以及「通用」里有什么 | `ponder.captions.visPlayground.previewText` | 第一行挑的是预览唱什么。想看看这套字撑不撑得住长句、或者别的文字系统，换一段示例比等一首真歌放到那儿要快。 | rowOne：第一行 | `ponder.anchors.visPlayground.rowOne` |
-| `vis-playground` | `vis-playground-common` | 四页各管什么，以及「通用」里有什么 | `ponder.captions.visPlayground.sectionReset` | 标签那一行右端的「默认」只退当前这一页。它不是整个窗口的复位 —— 你在别的页上调过的东西不会被它带走。 | sectionReset：默认 | `ponder.anchors.visPlayground.sectionReset` |
+| `vis-playground` | `vis-playground-hotspots` | 三块你看不见的区域 | `ponder.captions.visPlayground.jumps` | 点其中一块，右边设置栏就跳到对应那一页。这是这一屏里最快的走法 —— 指着画面上你想改的那部分，而不是去读标签的名字。 | tabs：五页 | `ponder.anchors.visPlayground.tabs` |
+| `vis-playground` | `vis-playground-common` | 五页各管什么，以及「字体」里有什么 | `ponder.captions.visPlayground.four` | 设置栏一共五页：歌词动画、背景、字体、字幕、全局。热区指向的就是其中三页，所以标签和画面是同一份清单的两个入口。 | tabs：五页 | `ponder.anchors.visPlayground.tabs` |
+| `vis-playground` | `vis-playground-common` | 五页各管什么，以及「字体」里有什么 | `ponder.captions.visPlayground.common` | 例外是「字体」和「全局」：它们没有自己的热区，因为都不是画面的一部分 —— 「字体」装的是作用于整屏的那些，「全局」是智能动感模式这样不属于任何一种样式的开关。这两页只能从这排标签进。 | tabCommon：通用 | `ponder.anchors.visPlayground.tabCommon` |
+| `vis-playground` | `vis-playground-common` | 五页各管什么，以及「字体」里有什么 | `ponder.captions.visPlayground.fonts` | 「字体」设置歌词字体、字号和字重。字重默认自动，也可手动指定。 | rowTwo：第二行 | `ponder.anchors.visPlayground.rowTwo` |
+| `vis-playground` | `vis-playground-common` | 五页各管什么，以及「字体」里有什么 | `ponder.captions.visPlayground.previewText` | 第一行挑的是预览唱什么。想看看这套字撑不撑得住长句、或者别的文字系统，换一段示例比等一首真歌放到那儿要快。 | rowOne：第一行 | `ponder.anchors.visPlayground.rowOne` |
+| `vis-playground` | `vis-playground-common` | 五页各管什么，以及「字体」里有什么 | `ponder.captions.visPlayground.sectionReset` | 标签那一行右端的「默认」只退当前这一页。它不是整个窗口的复位 —— 你在别的页上调过的东西不会被它带走。 | sectionReset：默认 | `ponder.anchors.visPlayground.sectionReset` |
 | `vis-playground` | `vis-playground-visuals` | 样式与背景 | `ponder.captions.visPlayground.animation` | 歌词样式在预览下面这一架图里选，点一张就换。样式比一章能讲完的多，值得你自己翻一遍，所以这里不把清单念一遍。 | shelf：样式 | `ponder.anchors.visPlayground.shelf` |
 | `vis-playground` | `vis-playground-visuals` | 样式与背景 | `ponder.captions.visPlayground.perMode` | 「歌词动画」页是当前样式自己的参数；换样式，这一页也跟着换。 | rows：这一页的控件 | `ponder.anchors.visPlayground.rows` |
 | `vis-playground` | `vis-playground-visuals` | 样式与背景 | `ponder.captions.visPlayground.background` | 「背景」页是同一套做法：先在这一格图里挑背景，再调这个背景。它和歌词样式是两层，各挑各的，任意组合都成立。 | backgroundPictures：背景类型 | `ponder.anchors.visPlayground.backgroundPictures` |
-| `vis-playground` | `vis-playground-subtitle` | 字幕 | `ponder.captions.visPlayground.subtitleContent` | 字幕第二行可选：翻译、罗马音、罗马音在上翻译在下的两行，或不显示。莫奈、时计和静止选两行时只显示翻译。 | rowTwo：第二行 | `ponder.anchors.visPlayground.rowTwo` |
-| `vis-playground` | `vis-playground-subtitle` | 字幕 | `ponder.captions.visPlayground.subtitleLegibility` | 下面三行管字幕看不看得清：「字幕透明度」「字幕背景」，以及「非翻译歌词添加模糊效果」。 | rowFour：第四行 | `ponder.anchors.visPlayground.rowFour` |
+| `vis-playground` | `vis-playground-subtitle` | 字幕 | `ponder.captions.visPlayground.subtitleContent` | 底部字幕先选行数：单行、双行或三行，再选每行显示当前句、下一句、翻译或罗马音。下面的「副字幕内容」只管莫奈、时计和静止排进自己版面的那一条。 | rowTwo：第二行 | `ponder.anchors.visPlayground.rowTwo` |
+| `vis-playground` | `vis-playground-subtitle` | 字幕 | `ponder.captions.visPlayground.subtitleLegibility` | 下面三行管字幕看不看得清：「字幕透明度」「字幕背景」，以及「下一句歌词添加模糊效果」。 | rowFour：第四行 | `ponder.anchors.visPlayground.rowFour` |
 | `vis-playground` | `vis-playground-subtitle` | 字幕 | `ponder.captions.visPlayground.subtitleFont` | 字幕默认跟随歌词字体。关闭后，字幕自己的字体和字重设置才会出现；「字幕缩放」一直都在。 | subtitleFollowsFont：字幕字体 | `ponder.anchors.visPlayground.subtitleFont` |
