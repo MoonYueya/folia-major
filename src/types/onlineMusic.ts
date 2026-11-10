@@ -315,6 +315,10 @@ export type OnlineFailureCaseId =
 // 没有成功的是哪一种请求：一首歌的播放地址，或者一个集合（歌单、专辑）的歌曲。
 export type OnlineFailureOperation = 'audio' | 'collection';
 
+// 本机播放器这条路自己的失败原因，和平台无关：播放器没装、装了却找不到它内部那个播放器，或者
+// 用户还没同意为了让 Folia 接上而关掉并重开他自己的播放器。平台报这一句，界面按它分开说。
+export type OnlinePlayerFailureCause = 'player-not-installed' | 'player-not-found' | 'player-restart-consent';
+
 // provider 对一次没有成功的请求知道的事实。只放可以公开贴出来的内容：不含 cookie、token、IP 或账号信息。
 export interface OnlineFailureDetail {
     // 只有 provider 认得出是哪一种情况时，由它直接点名；不点名就由共用的规则按下面的事实去分。
@@ -334,6 +338,8 @@ export interface OnlineFailureDetail {
     // 再试多少次也是这个结果，平台亲口这么说的（下架、只给会员放）。开了「自动跳过不能播放的歌」
     // 时，这种失败不等倒计时结束。
     skipAtOnce?: boolean;
+    // 本机播放器这条路失败的那一种情况，平台无关（OnlinePlayerFailureCause）。
+    playerCause?: OnlinePlayerFailureCause;
 }
 
 export type ProviderErrorCode =
@@ -500,8 +506,9 @@ export interface ProviderExternalPlaybackStatus {
     /** The player accepted a start/resume and is still buffering; this is not a user pause. */
     starting?: boolean;
     /**
-     * The player is sounding an advertisement between songs (a free account has some): the app
-     * shows it as one, holds the song's clock, and reads no lyrics for it.
+     * The player is sounding an advertisement between songs (a free account has some). Folia only
+     * recognises it, so that it is never taken for the song's end or for a track it did not ask
+     * for: nothing about the advertisement is shown, muted or otherwise changed.
      */
     advertisement?: boolean;
     /**
@@ -521,6 +528,12 @@ export interface ExternalPlaybackStartOptions {
      * cannot take the song instead.
      */
     userAction?: boolean;
+    /**
+     * The listener played a whole list in Folia, so the queue behind this song is replaced rather
+     * than followed: a player that keeps a queue of its own may empty it whole, the songs the
+     * listener queued in it included. Every other start takes back only the songs Folia wrote there.
+     */
+    replaceQueue?: boolean;
 }
 
 /**
@@ -560,27 +573,30 @@ export interface OnlineExternalPlaybackProvider {
      */
     isUnreachableFailure?(error: unknown): boolean;
     /**
-     * Whether the system media keys belong to this player while a track of Folia's sounds in it
-     * (the player registers a media session of its own, so a key Folia does not hold goes to it).
-     * True only where the player is steered by its own program with its own queue; absent or false
-     * leaves the keys to the app's own media session.
+     * The player sounds the song outside every page of the app, so nothing here can measure it: a
+     * real spectrum of the song needs the machine's own sound, captured as a whole. True where the
+     * audio never passes through the app; absent or false where it does, and nothing is captured.
      */
-    holdsMediaKeys?(): boolean;
+    capturesSystemAudio?: boolean;
     /**
-     * Whether this player asks for the system media keys for as long as Folia runs, not only while a
-     * track of Folia's sounds in it: its own program keeps a media session of its own between those
-     * tracks too, so a key let go while Folia is idle, on another route or after that program stopped
-     * is taken by it and never comes back to Folia. Read only where the listener left the setting
-     * that holds the keys for the whole run on; absent or false leaves the keys to the session rule
+     * The interface may show the song as playing as soon as the start is asked for, without waiting
+     * for the player to confirm it took the song. True for a player whose start is an instruction
+     * with no dependable answer; absent or false where the confirmation arrives with the start.
+     */
+    startsWithoutWaiting?: boolean;
+    /**
+     * The status polls space themselves out while this player is the one sounding the song: its
+     * answers arrive slowly or cost it something. True where that is so; absent or false keeps the
+     * polls at the app's own cadence.
+     */
+    backsOffStatusPolls?: boolean;
+    /**
+     * The system media keys belong to Folia while a song this route started sounds here, even where
+     * the player registers no media session of its own: a key the app let go would reach nothing.
+     * True where the keys are held for the song alone; absent or false leaves them to the rules
      * above.
      */
-    holdsMediaKeysWhileRunning?(): boolean;
-    /**
-     * Notified when `holdsMediaKeysWhileRunning` may have changed - the way this player plays is picked
-     * in its own setup, which is not a change of Folia's state. Absent where nothing but the session
-     * decides, which the app already follows from the player's answers.
-     */
-    subscribeMediaKeysWanted?(listener: () => void): () => void;
+    holdsMediaKeysWhilePlaying?: boolean;
     /** False only for songs this external route already knows it cannot start; no network reads. */
     canPlay?(song: SongResult): boolean;
     /** Prepare a bounded successor queue without interrupting the current song. */
@@ -620,6 +636,29 @@ export interface OnlineExternalPlaybackProvider {
     getStatus(song: SongResult): Promise<ProviderExternalPlaybackStatus>;
     /** Whether the player's loaded track is `song` (the id in `status` may be a playback id). */
     isStatusForSong(song: SongResult, status: ProviderExternalPlaybackStatus): boolean;
+    /**
+     * Puts this provider's songs back on its standard way of playing (the way that gives this app an
+     * audio address), for a listener whose external player cannot be steered any more - not
+     * installed, a build this app no longer finds its player in. The provider changes its own way and
+     * nothing else; absent where a provider has no other way to go back to.
+     */
+    useStandardPlayback?(): Promise<void>;
+}
+
+/**
+ * What an external player declared about how it plays, each answer false where the provider
+ * declared nothing (see OnlineExternalPlaybackProvider). Read for the app's own decisions only;
+ * nothing here starts, pauses or asks the player anything.
+ */
+export interface ExternalPlaybackTraits {
+    /** A real spectrum of the song has to be taken from the machine's own sound. */
+    capturesSystemAudio: boolean;
+    /** The interface may move on before the player confirms it took the song. */
+    startsWithoutWaiting: boolean;
+    /** The status polls space themselves out while this player sounds the song. */
+    backsOffStatusPolls: boolean;
+    /** The keys are held for as long as a song this route started sounds in it. */
+    holdsMediaKeysWhilePlaying: boolean;
 }
 
 /** An alternate title and artist that belong to the same song. */
@@ -684,6 +723,11 @@ export interface ProviderSetupStep {
     detail?: string;
     /** 这一步有一个密码框。saved：已经存过一份（框里只画掩码，要换才清空）。 */
     secret?: { labelKey: string; saved: boolean };
+    /**
+     * 一段收起的详细说明：清单里只放一句短的，按「更多」才展开这一段。放不下的长说明用它，
+     * 别把清单撑出窗口。
+     */
+    more?: { labelKey: string; noteKey: string };
     actions?: ProviderSetupAction[];
 }
 

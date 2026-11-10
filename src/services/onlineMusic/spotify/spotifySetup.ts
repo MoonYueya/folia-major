@@ -155,6 +155,9 @@ const clientView = (read: ClientWireState, offered: OfferedModes): ProviderSetup
             titleKey: 'soloist.step.clientApp',
             noteKey: read.available ? 'soloist.clientApp.ready' : 'soloist.clientApp.missing',
             state: read.available ? 'done' : 'error',
+            // 控制这台电脑上的 Spotify 靠的是它未公开的内部结构，可能因它的更新失效，也可能不合它的服务条款；
+            // 会改动它哪些状态也在这里说清楚。一句短的留在清单里，长的那段展开才看（窗口不能再高）。
+            more: { labelKey: 'soloist.clientApp.more', noteKey: 'soloist.clientApp.moreNote' },
         },
         modeStep('client', offered),
     ],
@@ -180,7 +183,7 @@ const readState = (start: boolean) => requestSpotify<SoloistWireState>('soloist_
 /** Whether Spotify's app is on this computer (a look at its launcher on disk, kept for a minute). */
 const readClient = () => requestSpotify<ClientWireState>('client_probe');
 
-const offeredBy = (answer: { soloist: boolean; client?: boolean }): OfferedModes => ({ soloist: answer.soloist === true, client: answer.client === true });
+const offeredBy = (answer: { soloist: boolean; client?: boolean }): OfferedModes => ({ soloist: answer.soloist, client: answer.client === true });
 
 /** The checklist now. Soloist is started only when it is the way Spotify plays. */
 export const getSpotifySetup = async (): Promise<ProviderSetupView | null> => {

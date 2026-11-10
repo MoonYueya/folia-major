@@ -11,7 +11,7 @@ import { describe, expect, it, vi } from 'vitest';
 // played-out queue, which is where the transport has nothing left to step to.
 
 // The way Spotify plays is read from the desktop side, which only the "does its app ask" case needs.
-const request = vi.hoisted(() => vi.fn(async (_operation: string, _params?: unknown): Promise<unknown> => ({ available: true })));
+const request = vi.hoisted(() => vi.fn(async (): Promise<unknown> => ({ available: true })));
 vi.mock('@/services/onlineMusic/spotify/spotifyTransport', () => ({
     requestSpotify: request,
     getSpotifyTransportAvailability: () => ({ configured: true }),
@@ -26,8 +26,6 @@ import {
 import {
     SAME_PRESS_MS, createMediaKeyPressGate, isRepeatedMediaKeyPress,
 } from '@/utils/mediaKeyPressGate';
-import { spotifyExternalPlayback } from '@/services/onlineMusic/spotify/spotifyExternalPlayback';
-import { readSpotifyPlaybackMode } from '@/services/onlineMusic/spotify/spotifySoloistPlayback';
 
 const require = createRequire(import.meta.url);
 const { MEDIA_KEYS, createMediaKeyTakeover } = require('../../../electron/mediaKeys.cjs');
@@ -93,42 +91,43 @@ describe('the module that holds the keys', () => {
 });
 
 const factsOf = (over: Partial<MediaKeyHoldFacts> = {}): MediaKeyHoldFacts => ({
-    holdWhileRunning: true,
-    playerAsksForAsLongAsFoliaRuns: true,
-    route: 'web',
-    externalSong: null,
-    sessionDeclares: false,
+    settingOn: true,
+    route: 'external',
+    externalSong: song,
+    holdsMediaKeysWhilePlaying: true,
     ...over,
 });
 
 describe('whether Folia holds the media keys', () => {
-    it('holds them for the whole run while the setting is on and a player asks for them', () => {
-        // The three states that let go when only a sounding song counts: the queue played out (Folia
-        // idle), a song of Folia's own sounding, and the player's own session gone after it stopped.
-        expect(shouldHoldMediaKeys(factsOf({ route: 'web' }))).toBe(true);
-        expect(shouldHoldMediaKeys(factsOf({ route: 'hifi' }))).toBe(true);
-        expect(shouldHoldMediaKeys(factsOf({ route: 'external', externalSong: null }))).toBe(true);
-        expect(shouldHoldMediaKeys(factsOf({ route: 'external', externalSong: song, sessionDeclares: true }))).toBe(true);
+    it('holds them while a song Folia started sounds in the player that declares them', () => {
+        expect(shouldHoldMediaKeys(factsOf())).toBe(true);
+        // Paused is the same session, still Folia's to answer for: a press resumes it.
+        expect(shouldHoldMediaKeys(factsOf())).toBe(true);
     });
 
-    it('lets them go the moment that player stops asking, which is a change of the way it plays', () => {
-        // Back to the standard way, or to the player that registers no media session of its own: no
-        // player asks any more and nothing is held - the release the listener asked for.
-        expect(shouldHoldMediaKeys(factsOf({ playerAsksForAsLongAsFoliaRuns: false }))).toBe(false);
-        // Unless a session of its own is still there and the player declares it: that one holds while
-        // it sounds.
-        expect(shouldHoldMediaKeys(factsOf({ playerAsksForAsLongAsFoliaRuns: false, route: 'external', externalSong: song, sessionDeclares: true }))).toBe(true);
+    it('lets them go while the app\'s own engine sounds the song', () => {
+        // A local song, a Navidrome one, anything the app's own decks play: nothing is held, so the
+        // listener's other programs keep the keys the way they always had.
+        for (const route of ['web', 'standard', 'hifi']) {
+            expect(shouldHoldMediaKeys(factsOf({ route })), route).toBe(false);
+        }
     });
 
-    it('with the setting off, holds only while that player sounds a song of Folia\'s', () => {
-        const off = { holdWhileRunning: false, route: 'external', sessionDeclares: true } as const;
-        expect(shouldHoldMediaKeys(factsOf({ ...off, externalSong: song }))).toBe(true);
-        // Its session is gone (it stopped, or its song ended), the queue is over, or Folia is the one
-        // sounding: nothing is held.
-        expect(shouldHoldMediaKeys(factsOf({ ...off, externalSong: null }))).toBe(false);
-        expect(shouldHoldMediaKeys(factsOf({ ...off, externalSong: song, route: 'web' }))).toBe(false);
-        // A player that declares no session of its own keeps the app's own media session either way.
-        expect(shouldHoldMediaKeys(factsOf({ ...off, sessionDeclares: false, externalSong: song }))).toBe(false);
+    it('lets them go while the external player holds nothing, and after it stopped', () => {
+        expect(shouldHoldMediaKeys(factsOf({ externalSong: null }))).toBe(false);
+        // Idle is idle on whatever route: not a second rule.
+        expect(shouldHoldMediaKeys(factsOf({ route: 'web', externalSong: null }))).toBe(false);
+    });
+
+    it('holds them only for a player that declares them Folia\'s while its song sounds', () => {
+        // A player that registers no session of its own and declares nothing keeps the app's own
+        // media session, the way it always did.
+        expect(shouldHoldMediaKeys(factsOf({ holdsMediaKeysWhilePlaying: false }))).toBe(false);
+    });
+
+    it('holds nothing at all while the listener has the takeover switched off', () => {
+        expect(shouldHoldMediaKeys(factsOf({ settingOn: false }))).toBe(false);
+        expect(shouldHoldMediaKeys(factsOf({ settingOn: false, route: 'web' }))).toBe(false);
     });
 });
 
@@ -267,24 +266,3 @@ describe('the wish sent to the main process', () => {
     });
 });
 
-describe('a player asking for the keys for the whole run', () => {
-    it('asks while its app is the way it plays, and tells the app the moment that changes', async () => {
-        const heard = vi.fn();
-        const stop = spotifyExternalPlayback.subscribeMediaKeysWanted?.(heard);
-        request.mockResolvedValueOnce({ mode: 'client', soloist: true, client: true });
-        await readSpotifyPlaybackMode();
-        expect(spotifyExternalPlayback.holdsMediaKeysWhileRunning?.()).toBe(true);
-
-        // Back to the standard way: the keys are let go, and the app is told at once (the listener's
-        // second press must not keep waiting for a store change that never comes).
-        request.mockResolvedValueOnce({ mode: 'standard', soloist: true, client: true });
-        await readSpotifyPlaybackMode();
-        expect(spotifyExternalPlayback.holdsMediaKeysWhileRunning?.()).toBe(false);
-        expect(heard).toHaveBeenCalledTimes(2);
-        stop?.();
-        // A listener let go hears nothing more.
-        request.mockResolvedValueOnce({ mode: 'client', soloist: true, client: true });
-        await readSpotifyPlaybackMode();
-        expect(heard).toHaveBeenCalledTimes(2);
-    });
-});

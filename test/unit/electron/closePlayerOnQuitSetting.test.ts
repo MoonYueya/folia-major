@@ -4,13 +4,15 @@ import { describe, expect, it, vi } from 'vitest';
 // test/unit/electron/closePlayerOnQuitSetting.test.ts — the quit switch 「Folia 退出时关闭外部播放器」 as
 // the main process reads it. The key is CLOSE_EXTERNAL_PLAYER_ON_QUIT, but this fork published the
 // same switch under the lower-case close_external_player_on_quit, so a value saved back then has to
-// reach the quit rather than read as off: it is carried over to the upper-case key as it is read.
+// reach the quit rather than be lost: it is carried over to the upper-case key before the quit reads
+// it. What an unset switch answers is the quit's own rule (it reads as on, electron/main.cjs), so
+// nothing here answers for that case — the carrying is all this module does.
 
 const require = createRequire(import.meta.url);
 const {
     CLOSE_PLAYER_ON_QUIT_SETTING_KEY,
     LEGACY_CLOSE_PLAYER_ON_QUIT_SETTING_KEY,
-    createClosePlayerOnQuitSetting,
+    carryClosePlayerOnQuitSetting,
 } = require('../../../electron/closePlayerOnQuitSetting.cjs');
 
 function makeStore(entries: Record<string, unknown> = {}, { cannotWrite = false } = {}) {
@@ -33,25 +35,19 @@ describe('the keys', () => {
     });
 });
 
-describe('reading the switch at the quit', () => {
-    it('is off when nothing was ever stored', () => {
+describe('carrying the published key over at the quit', () => {
+    it('carries nothing when nothing was ever stored, leaving the quit its own default', () => {
         const { store } = makeStore();
         const log = vi.fn();
-        expect(createClosePlayerOnQuitSetting(store, log)()).toBe(false);
+        expect(carryClosePlayerOnQuitSetting(store, log)).toBe(false);
         expect(store.set).not.toHaveBeenCalled();
         expect(log).not.toHaveBeenCalled();
-    });
-
-    it('answers the upper-case key, and only true for a stored true', () => {
-        expect(createClosePlayerOnQuitSetting(makeStore({ CLOSE_EXTERNAL_PLAYER_ON_QUIT: true }).store)()).toBe(true);
-        expect(createClosePlayerOnQuitSetting(makeStore({ CLOSE_EXTERNAL_PLAYER_ON_QUIT: 'true' }).store)()).toBe(false);
-        expect(createClosePlayerOnQuitSetting(makeStore({ CLOSE_EXTERNAL_PLAYER_ON_QUIT: false }).store)()).toBe(false);
     });
 
     it('carries a value this fork stored under the old key over to the new one', () => {
         const { store, values } = makeStore({ close_external_player_on_quit: true });
         const log = vi.fn();
-        expect(createClosePlayerOnQuitSetting(store, log)()).toBe(true);
+        expect(carryClosePlayerOnQuitSetting(store, log)).toBe(true);
         expect(store.set).toHaveBeenCalledWith('CLOSE_EXTERNAL_PLAYER_ON_QUIT', true);
         expect(values.get('CLOSE_EXTERNAL_PLAYER_ON_QUIT')).toBe(true);
         expect(log).toHaveBeenCalledTimes(1);
@@ -62,21 +58,23 @@ describe('reading the switch at the quit', () => {
 
     it('carries an off value too, so the new key answers from then on', () => {
         const { store, values } = makeStore({ close_external_player_on_quit: false });
-        expect(createClosePlayerOnQuitSetting(store, vi.fn())()).toBe(false);
+        expect(carryClosePlayerOnQuitSetting(store, vi.fn())).toBe(true);
         expect(values.has('CLOSE_EXTERNAL_PLAYER_ON_QUIT')).toBe(true);
+        expect(values.get('CLOSE_EXTERNAL_PLAYER_ON_QUIT')).toBe(false);
     });
 
-    it('prefers the new key once both are stored', () => {
+    it('carries nothing once the new key holds a value of its own', () => {
         const { store } = makeStore({ close_external_player_on_quit: false, CLOSE_EXTERNAL_PLAYER_ON_QUIT: true });
-        expect(createClosePlayerOnQuitSetting(store, vi.fn())()).toBe(true);
+        expect(carryClosePlayerOnQuitSetting(store, vi.fn())).toBe(false);
         expect(store.set).not.toHaveBeenCalled();
     });
 
-    it('still answers from the old key when the store cannot be written', () => {
-        const { store } = makeStore({ close_external_player_on_quit: true }, { cannotWrite: true });
+    it('leaves the old key in place when the store cannot be written', () => {
+        const { store, values } = makeStore({ close_external_player_on_quit: true }, { cannotWrite: true });
         const warned = vi.spyOn(console, 'warn').mockImplementation(() => {});
-        expect(createClosePlayerOnQuitSetting(store, vi.fn())()).toBe(true);
+        expect(carryClosePlayerOnQuitSetting(store, vi.fn())).toBe(false);
         expect(warned).toHaveBeenCalledTimes(1);
+        expect(values.get('close_external_player_on_quit')).toBe(true);
         warned.mockRestore();
     });
 });

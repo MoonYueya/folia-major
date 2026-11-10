@@ -162,7 +162,10 @@ const CLIENT_VIEW: ProviderSetupView = {
     noteKey: 'soloist.setup.clientNote',
     complete: true,
     steps: [
-        { id: 'app', titleKey: 'soloist.step.clientApp', noteKey: 'soloist.clientApp.ready', state: 'done' },
+        {
+            id: 'app', titleKey: 'soloist.step.clientApp', noteKey: 'soloist.clientApp.ready', state: 'done',
+            more: { labelKey: 'soloist.clientApp.more', noteKey: 'soloist.clientApp.moreNote' },
+        },
         {
             id: 'mode', titleKey: 'soloist.step.modeClient', noteKey: 'soloist.mode.clientNote', state: 'done',
             actions: [
@@ -304,9 +307,9 @@ function LoginWindowProbe(props: ProbeProps) {
         ? PLATFORMS.map(entry => (entry.providerId === 'spotify' ? { ...entry, status: 'authenticated' as const } : entry))
         : state === 'account-spotify' || state === 'setup-client'
             ? PLATFORMS.map(entry => (entry.providerId === 'spotify' ? { ...entry, status: 'authenticated' as const, user: SAMPLE_USER } : entry))
-        : played && step === 3
-            ? PLATFORMS.map(entry => (entry.providerId === played ? { ...entry, status: 'authenticated' as const, user: SAMPLE_USER } : entry))
-            : PLATFORMS;
+            : played && step === 3
+                ? PLATFORMS.map(entry => (entry.providerId === played ? { ...entry, status: 'authenticated' as const, user: SAMPLE_USER } : entry))
+                : PLATFORMS;
     const rows = orderRows([...platforms, ...STAND_INS.slice(0, Math.max(0, count - platforms.length))], played ?? activeProviderId);
     const view: Shown = played
         ? {

@@ -177,6 +177,10 @@ export const buildSettingsCommandContext = (
         toggleAlwaysShowMainWindowTitlebar: () => chrome.handleToggleAlwaysShowMainWindowTitlebar(
             !usePlayerChromeSettingsStore.getState().alwaysShowMainWindowTitlebar,
         ),
+        toggleTitlebarSide: () => {
+            const current = usePlayerChromeSettingsStore.getState();
+            current.handleSetTitlebarSide(current.titlebarSide === 'left' ? 'right' : 'left');
+        },
         togglePlayerHeaderBlur: () => chrome.handleTogglePlayerHeaderBlur(
             !usePlayerChromeSettingsStore.getState().playerHeaderBlur,
         ),
@@ -185,6 +189,9 @@ export const buildSettingsCommandContext = (
         ),
         toggleNativeMacFullscreenButton: () => chrome.handleToggleNativeMacFullscreenButton(
             !usePlayerChromeSettingsStore.getState().useNativeMacFullscreenButton,
+        ),
+        toggleNativeMacTrafficLights: () => chrome.handleToggleNativeMacTrafficLights(
+            !usePlayerChromeSettingsStore.getState().useNativeMacTrafficLights,
         ),
         toggleAutoHideCursorWithPlayerChrome: () => chrome.handleToggleAutoHideCursorWithPlayerChrome(
             !usePlayerChromeSettingsStore.getState().autoHideCursorWithPlayerChrome,
@@ -256,6 +263,9 @@ export const buildSettingsCommandContext = (
         ),
         toggleCloseExternalPlayerOnQuit: () => desktop.handleToggleCloseExternalPlayerOnQuit(
             !useDesktopSettingsStore.getState().closeExternalPlayerOnQuit,
+        ),
+        toggleExternalSystemAudioSpectrum: () => desktop.handleToggleExternalSystemAudioSpectrum(
+            !useDesktopSettingsStore.getState().externalSystemAudioSpectrum,
         ),
         toggleWallpaperMacAutohideDock: () => desktop.handleToggleWallpaperMacAutohideDock(
             !useDesktopSettingsStore.getState().wallpaperMacAutohideDock,

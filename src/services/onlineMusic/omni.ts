@@ -7,6 +7,7 @@ import type {
     DailyStyleSelection,
     DailyStyleSongs,
     ExternalPlaybackStartOptions,
+    ExternalPlaybackTraits,
     LoginStep,
     MediaId,
     OmniAudioSource,
@@ -1170,30 +1171,25 @@ export const omni = {
         return external.isUnreachableFailure?.(error) === true;
     },
 
-    // Whether the system media keys belong to the external player while it sounds this song: the one
-    // that keeps a media session of its own takes a key Folia gave back, so Folia holds it instead.
-    holdsExternalPlaybackMediaKeys(song: SongResult): boolean {
-        return getOnlineMusicProviderForSong(song)?.externalPlayback?.holdsMediaKeys?.() === true;
-    },
-
-    // Whether some player asks for the system media keys for as long as Folia runs, not only while a
-    // track of Folia's sounds in it: that player's own program keeps a media session of its own
-    // between songs, so a key Folia let go is taken by it (the provider's declaration says why). The
-    // app asks no provider which song is on screen: the answer is about that program, not a track.
-    wantsMediaKeyTakeoverWhileRunning(): boolean {
-        return listOnlineMusicProviders().some(provider => provider.externalPlayback?.holdsMediaKeysWhileRunning?.() === true);
-    },
-
-    // Told when that answer may have changed: the way a player plays is picked in its own setup, and
-    // nothing of Folia's state changes with it. A provider that cannot be told is asked on every
-    // change of Folia's state instead.
-    subscribeMediaKeyTakeoverWanted(listener: () => void): () => void {
-        const stops = listOnlineMusicProviders()
-            .map(provider => provider.externalPlayback?.subscribeMediaKeysWanted?.(listener))
-            .filter((stop): stop is () => void => typeof stop === 'function');
-        return () => {
-            for (const stop of stops) stop();
+    // What the provider of `song` declared about how its external player plays: a real spectrum, a
+    // start without a wait, spaced-out status polls, keys held while the song sounds. A song whose
+    // provider has no external player, or a declaration it left out, answers false everywhere.
+    externalPlaybackTraits(song: SongResult): ExternalPlaybackTraits {
+        const external = getOnlineMusicProviderForSong(song)?.externalPlayback;
+        return {
+            capturesSystemAudio: external?.capturesSystemAudio === true,
+            startsWithoutWaiting: external?.startsWithoutWaiting === true,
+            backsOffStatusPolls: external?.backsOffStatusPolls === true,
+            holdsMediaKeysWhilePlaying: external?.holdsMediaKeysWhilePlaying === true,
         };
+    },
+
+    // 一个播放不了的外部播放器（没装、版本改了找不到里面的播放器）之后，把平台的歌换回它自己的标准播放：
+    // 平台自己换，共用层不认是哪一种播放方式。没有别的路可回的 provider 什么都不做。
+    async leaveExternalPlaybackForStandard(providerId: OmniProviderId): Promise<void> {
+        const provider = getOnlineMusicProvider(providerId);
+        if (!provider?.externalPlayback?.useStandardPlayback) return;
+        await provider.externalPlayback.useStandardPlayback();
     },
 
     async seekExternalPlayback(song: SongResult, seconds: number): Promise<void> {

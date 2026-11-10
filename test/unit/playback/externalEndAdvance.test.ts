@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { UnifiedSong } from '@/types';
+import type * as ExternalPlaybackModule from '@/services/onlineMusic/externalPlayback';
+import type * as DbModule from '@/services/db';
+import type * as PlaybackBlobUrlModule from '@/services/playbackBlobUrls';
+import type * as ZustandModule from 'zustand';
 
 // test/unit/playback/externalEndAdvance.test.ts — 外部播放器报「这一首放完了」时，桥往哪儿走：
 // 单曲循环下重播当前这首，别的情况照常前进；播放器自己按键跳的仍然照常切。
@@ -15,13 +19,14 @@ const env = vi.hoisted(() => ({
     next: vi.fn(),
     prev: vi.fn(),
     /** 播放器那边的起始，按 startExternalPlayback 交给播放路径的样子记下来。 */
-    externalStarts: vi.fn((..._args: unknown[]) => ({
+    externalStarts: vi.fn().mockReturnValue({
         attempt: 1,
         askedAt: 0,
         started: Promise.resolve(),
         seeded: Promise.resolve(),
+        waited: Promise.resolve(),
         timings: { prepareMs: 0, playMs: null, statusMs: null, lyricsMs: null, visibleMs: null, coverMs: null },
-    })),
+    }),
 }));
 
 vi.mock('react', () => ({
@@ -36,7 +41,7 @@ vi.mock('react-i18next', () => ({
     useTranslation: () => ({ t: (key: string) => key }),
 }));
 vi.mock('@/services/onlineMusic/externalPlayback', async importOriginal => ({
-    ...await importOriginal<typeof import('@/services/onlineMusic/externalPlayback')>(),
+    ...await importOriginal<typeof ExternalPlaybackModule>(),
     installExternalPlayback: () => {},
     subscribeExternalPlayback: (listener: (event: unknown) => void) => { env.listener = listener; return () => {}; },
     startExternalPlayback: (...args: unknown[]) => env.externalStarts(...args),
@@ -55,12 +60,17 @@ vi.mock('@/services/onlineMusic/omni', () => ({
         isExternalPlaybackPrepared: () => false,
         canPlaySong: () => true,
         getProviderLabel: (id: string) => id,
+        // The bridge asks a song's provider whether it can give the real spectrum; none of these do.
+        externalPlaybackTraits: () => ({ capturesSystemAudio: false }),
     },
 }));
 vi.mock('@/components/app/playback/externalPlayerWake', () => ({ runExternalPlayerWarmUp: vi.fn(async () => undefined) }));
-vi.mock('@/stores/useDesktopSettingsStore', () => ({
-    useDesktopSettingsStore: { getState: () => ({ wakeExternalPlayersOnLaunch: false }) },
-}));
+vi.mock('@/stores/useDesktopSettingsStore', () => {
+    // The bridge also follows the spectrum switch, so the store it follows has to be subscribable.
+    const read = () => ({ wakeExternalPlayersOnLaunch: false, externalSystemAudioSpectrum: false });
+    const store = (selector?: (state: unknown) => unknown) => (selector ? selector(read()) : read());
+    return { useDesktopSettingsStore: Object.assign(store, { getState: read, subscribe: () => () => {} }) };
+});
 vi.mock('@/stores/useAudioSettingsStore', () => {
     const read = () => ({
         loopMode: env.loopMode,
@@ -100,12 +110,12 @@ vi.mock('@/services/prefetchService', () => ({
 }));
 vi.mock('@/services/automix/profileService', () => ({ clearTrackProfileRuntime: vi.fn() }));
 vi.mock('@/services/db', async importOriginal => ({
-    ...await importOriginal<typeof import('@/services/db')>(),
+    ...await importOriginal<typeof DbModule>(),
     getLocalSong: async () => null,
     removeFromCache: vi.fn(async () => undefined),
 }));
 vi.mock('@/services/playbackBlobUrls', async importOriginal => ({
-    ...await importOriginal<typeof import('@/services/playbackBlobUrls')>(),
+    ...await importOriginal<typeof PlaybackBlobUrlModule>(),
     retireBlobUrl: vi.fn(),
 }));
 vi.mock('@/services/onlinePlayback', () => ({
@@ -120,7 +130,7 @@ vi.mock('zustand', async importOriginal => {
         const api = createStore(initializer);
         return Object.assign((selector?: (state: unknown) => unknown) => (selector ? selector(api.getState()) : api.getState()), api);
     };
-    return { ...await importOriginal<typeof import('zustand')>(), create: (initializer?: never) => (initializer ? build(initializer) : build) };
+    return { ...await importOriginal<typeof ZustandModule>(), create: (initializer?: never) => (initializer ? build(initializer) : build) };
 });
 
 const { useExternalPlaybackBridge } = await import('@/components/app/playback/bridges/useExternalPlaybackBridge');
@@ -135,7 +145,7 @@ const [songA, songB]: UnifiedSong[] = ['1', '2'].map(id => ({
 }));
 
 /** 装上桥，返回投一个播放事件进去的手法。 */
-const install = () => {
+const InstallBridge = () => {
     env.effects.length = 0;
     env.listener = null;
     useExternalPlaybackBridge({ handleNextTrack: env.next, handlePrevTrack: env.prev });
@@ -145,7 +155,7 @@ const install = () => {
 };
 
 /** 装上真的播放队列钩子，再接上桥：播放事件走完整的一段，落到开启播放器的那次调用上。 */
-const installOnRealQueue = () => {
+const InstallOnRealQueue = () => {
     env.effects.length = 0;
     env.listener = null;
     const refs = usePlaybackRuntimeRefs();
@@ -189,7 +199,7 @@ afterEach(() => {
 describe('播放器自己放到一首的结尾时', () => {
     it('单曲循环下重播这一首，不往前走', () => {
         env.loopMode = 'one';
-        const fire = install();
+        const fire = InstallBridge();
         fire({ type: 'ended', heard: true });
 
         expect(env.next).toHaveBeenCalledTimes(1);
@@ -198,7 +208,7 @@ describe('播放器自己放到一首的结尾时', () => {
 
     it('别的循环模式下照常切下一首，不带重播', () => {
         env.loopMode = 'all';
-        const fire = install();
+        const fire = InstallBridge();
         fire({ type: 'ended' });
 
         expect(env.next).toHaveBeenCalledTimes(1);
@@ -209,7 +219,7 @@ describe('播放器自己放到一首的结尾时', () => {
     it('私人 FM 里不走单曲循环：队列到头就停，不重播', () => {
         env.loopMode = 'one';
         usePlaybackStore.setState({ isFmMode: true });
-        const fire = install();
+        const fire = InstallBridge();
         fire({ type: 'ended' });
 
         expect(env.next.mock.calls[0][0]).not.toHaveProperty('replayCurrent');
@@ -217,7 +227,7 @@ describe('播放器自己放到一首的结尾时', () => {
 
     it('播放器自己按键跳的照常切歌，哪怕在单曲循环下', () => {
         env.loopMode = 'one';
-        const fire = install();
+        const fire = InstallBridge();
         fire({ type: 'ended', skipped: 'next' });
 
         expect(env.next.mock.calls[0][0]).not.toHaveProperty('replayCurrent');
@@ -225,7 +235,7 @@ describe('播放器自己放到一首的结尾时', () => {
 
     it('这一首没响过就报放完，不重播，照常往前走', () => {
         env.loopMode = 'one';
-        const fire = install();
+        const fire = InstallBridge();
         // 播放器自己一直没确认在放这一首（起播就没落地），这时候的放完不是它放完的。
         fire({ type: 'ended', heard: false });
 
@@ -235,7 +245,7 @@ describe('播放器自己放到一首的结尾时', () => {
 
     it('单曲循环下用户自己按上一首，走上一首而不是重播这一首', () => {
         env.loopMode = 'one';
-        const fire = install();
+        const fire = InstallBridge();
         fire({ type: 'ended', skipped: 'previous', heard: true });
 
         expect(env.next).not.toHaveBeenCalled();
@@ -246,7 +256,7 @@ describe('播放器自己放到一首的结尾时', () => {
 
     it('这一首真放过才重播', () => {
         env.loopMode = 'one';
-        const fire = install();
+        const fire = InstallBridge();
         fire({ type: 'ended', heard: true });
 
         expect(env.next.mock.calls[0][0]).toHaveProperty('replayCurrent', true);
@@ -258,7 +268,7 @@ describe('单曲循环下这一首放完，接到真的队列上', () => {
         env.external = true;
         env.loopMode = 'one';
         usePlaybackStore.setState({ currentSong: songA, playQueue: [songA, songB], duration: 1 });
-        const fire = installOnRealQueue();
+        const fire = InstallOnRealQueue();
         // 降级模式下播放器只报这一首放完了，不带 skipped，队列也清不回自己名下。
         fire({ type: 'ended', heard: true });
 

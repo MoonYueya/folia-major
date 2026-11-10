@@ -28,6 +28,8 @@ const env = vi.hoisted(() => ({
     externalPrepared: false,
     externalStarts: vi.fn((..._args: unknown[]) => externalHandle(Promise.resolve())),
     note: (_label: string) => {},
+    /** 控制器每次翻译的实参：带平台名的那几句要看名字有没有真的交进去。 */
+    translations: [] as { key: string; values?: Record<string, string | number> }[],
     lyricsStateFor: new Map<string, Promise<unknown>>(),
     /** Song ids whose audio address is held until the promise resolves. */
     audioGate: new Map<string, Promise<unknown>>(),
@@ -68,7 +70,13 @@ vi.mock('zustand', async importOriginal => {
 });
 vi.mock('react-i18next', () => ({
     initReactI18next: { type: '3rdParty', init: vi.fn() },
-    useTranslation: () => ({ t: (key: string) => key }),
+    // 翻译本身由 platformNamedStatusText.test.ts 用真的四份词条核对；这里记下实参，看名字有没有交进去。
+    useTranslation: () => ({
+        t: (key: string, values?: Record<string, string | number>) => {
+            env.translations.push({ key, values });
+            return key;
+        },
+    }),
 }));
 vi.mock('@/services/hostExtensionHooks', () => ({
     hasBeforePlayHook: () => Boolean(env.beforePlay),
@@ -166,6 +174,7 @@ beforeEach(() => {
     env.audioResultFor.clear();
     env.prefetchedFor.clear();
     env.coverFor.clear();
+    env.translations.length = 0;
     useStatusMessageStore.setState({ message: null });
 });
 afterEach(() => {
@@ -209,11 +218,14 @@ const deferred = <T,>() => {
 };
 
 // What `startExternalPlayback` hands the play path: the player's side of a start, still running.
-const externalHandle = (started: Promise<void>) => ({
+// `waited` is what a player that declared nothing makes the play path wait for before it shows the
+// song; it is the start here, and a test that needs the wait held passes its own.
+const externalHandle = (started: Promise<void>, waited: Promise<void> = Promise.resolve()) => ({
     attempt: 1,
     askedAt: performance.now(),
     started,
     seeded: started.then(() => undefined, () => undefined),
+    waited,
     timings: { prepareMs: 0, playMs: null, statusMs: null, lyricsMs: null, visibleMs: null, coverMs: null },
 });
 
@@ -233,6 +245,8 @@ describe('the play that goes outside the app', () => {
         // No one pressed anything: the player is not woken, and no failure is shown.
         expect(env.externalStarts).toHaveBeenCalledWith(songA, 0, { userAction: false });
         await vi.waitFor(() => expect(messages).toContainEqual(expect.objectContaining({ type: 'info', text: 'status.externalPlayerUnreachable' })));
+        // 这一句里有 {{platform}}：名字没交进去的话，界面上留着的就是花括号。
+        expect(env.translations).toContainEqual({ key: 'status.externalPlayerUnreachable', values: { platform: 'bodian' } });
         expect(messages).not.toContainEqual(expect.objectContaining({ type: 'error' }));
         // A start the player refuses before the interface was on the song shows nothing of it: the
         // song it was on stays on screen, paused.
@@ -322,6 +336,23 @@ describe('playSong and the current song (online)', () => {
         unsubscribe();
     });
 
+
+    it('shows nothing of an external song until the player that answers has taken it', async () => {
+        env.external = true;
+        // A player whose start answers (Apple Music's companion): the play path shows the song only
+        // once the player has it and the clock is seeded, which is the wait it has always taken.
+        const taken = deferred<void>();
+        env.externalStarts.mockImplementation(() => externalHandle(Promise.resolve(), taken.promise));
+        const { queue } = mount();
+        const playing = queue.playSong(songA, [songA, songB]);
+        await vi.waitFor(() => expect(env.externalStarts).toHaveBeenCalled());
+        for (let tick = 0; tick < 10; tick++) await Promise.resolve();
+        expect(usePlaybackStore.getState().currentSong).toBeNull();
+
+        taken.resolve();
+        await playing;
+        expect(usePlaybackStore.getState().currentSong?.id).toBe('1');
+    });
 
     it('shows preparation feedback on a cold external start', async () => {
         env.external = true;

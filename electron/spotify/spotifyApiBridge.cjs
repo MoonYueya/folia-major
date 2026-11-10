@@ -4,6 +4,7 @@ const { createSpotifyAudioFiles } = require('./audioFiles.cjs');
 const { SpotifyError, describeError, lineReason, plainWords, spotifyError, statusError, toErrorResult } = require('./errors.cjs');
 const { createSpotifySessionRepository, publicAccountId } = require('./session.cjs');
 const { createSpotifyOfficialClient } = require('./officialClient.cjs');
+const { read: restartConsented } = require('../restartConsent.cjs');
 const { createSpotifySignIn } = require('./signIn.cjs');
 const { createSoloist } = require('./soloist.cjs');
 
@@ -137,8 +138,13 @@ function createSpotifyApiBridge({
   };
   const setPlaybackMode = mode => {
     if (!PLAYBACK_MODES.includes(mode) || (mode === 'soloist' && !soloist) || (mode === 'client' && !clientOffered) || mode === playbackMode()) return;
+    const leavingClient = playbackMode() === 'client';
     store.set(PLAYBACK_KEY, mode);
     log(`[Spotify] Plays through ${PLAYBACK_MODE_NAMES[mode]} from now on`);
+    // Leaving this way of playing puts the listener's own repeat and shuffle back before the app is
+    // let go: what Folia changed of it goes with Folia. The let-go itself does not wait for the
+    // pick to answer, and a state that could not be put back keeps its record for a later restore.
+    if (leavingClient) restoreClientState().finally(releasePlayer);
   };
   // The way to play picked with a sign-in, kept until Spotify approves it.
   let signingInWith = null;
@@ -322,7 +328,37 @@ function createSpotifyApiBridge({
   let availability = null;
   let availabilityReadAt = 0;
   // Its own fetch: the Spotify app is on this computer, never behind the partition's proxy.
-  const client = () => (officialClient ??= createSpotifyOfficialClient({ log, warn }));
+  // The listener's answer about restarting their Spotify is read from the store it is kept in, at
+  // the moment the app would be closed (officialClient.cjs).
+  const client = () => (officialClient ??= createSpotifyOfficialClient({ log, warn, restartConsented: () => restartConsented(store) }));
+  // Ends what steered Spotify's own app: the media session helper process and the DevTools
+  // connection (officialClient.cjs, release). Spotify itself keeps running; the next call builds both
+  // again. A player that was never made has nothing to let go.
+  const releasePlayer = () => {
+    if (!officialClient?.release) return;
+    officialClient.release().catch(error => warn('[Spotify] Spotify\'s player could not be let go', error));
+  };
+
+  // The listener's own repeat and shuffle of Spotify's app, put back as this run found them
+  // (officialClient.cjs, `restoreUserState`). Called wherever Folia stops playing in that app -
+  // another way of playing is picked, the account is signed out, Folia quits - so what a play had
+  // to change of it is not left on the listener's Spotify. Nothing that failed is reported: a
+  // player that cannot be reached keeps the record and is tried again, and no reason to hold
+  // leaving for it.
+  const restoreClientState = async () => {
+    if (!officialClient?.restoreUserState) return;
+    try {
+      await officialClient.restoreUserState();
+    } catch (error) {
+      warn('[Spotify] The listener\'s own repeat and shuffle could not be put back', error);
+    }
+  };
+  // Whether a play of this run changed anything of the listener's own that is still to be put back:
+  // a quit holds for it, since a Spotify closed with Folia would take the record with the app.
+  const stateChanged = () => {
+    const changed = officialClient?.changedState?.();
+    return Boolean(changed && (changed.repeat !== null || changed.shuffle !== null));
+  };
 
   const handlers = {
     async login_start(params) {
@@ -394,9 +430,14 @@ function createSpotifyApiBridge({
     // Spotify has no request that takes a grant back; the tokens are forgotten here.
     async logout() {
       signIn.cancel();
+      // The listener's own repeat and shuffle are put back before the app is let go: signing out
+      // ends the way Folia played in it.
+      await restoreClientState();
       const saved = repo.get();
       repo.clear();
       audio.clear();
+      // The account Spotify's own app was steered as is gone: what steered it goes too.
+      releasePlayer();
       log(`[Spotify] Signed out${saved ? '' : ' (nobody was signed in)'}`);
       return true;
     },
@@ -674,24 +715,33 @@ function createSpotifyApiBridge({
     // running with the DevTools port Folia opened, as it quits. Soloist, where it runs, is stopped as well.
     shutdown({ closePlayerOnQuit = false } = {}) {
       const stopping = soloist?.shutdown() ?? null;
-      // The page has to be touched only for a Spotify that is closed with Folia, or for an
-      // advertisement mute still waiting to be given back. Neither: the quit is not held for it.
-      const playerWaits = Boolean(officialClient) && (closePlayerOnQuit || officialClient.releasePending?.() === true);
+      // The page has to be touched only for a Spotify that is closed with Folia. Without it the
+      // quit is not held for the player at all.
+      const playerWaits = Boolean(officialClient) && closePlayerOnQuit;
+      // A quit that closes Spotify has to put the listener's own repeat and shuffle back before it:
+      // the app would otherwise keep what Folia changed, and be closed with it.
+      const restores = Boolean(officialClient) && (playerWaits || stateChanged());
       const closing = (async () => {
-        if (playerWaits && closePlayerOnQuit) {
+        if (restores) {
+          try {
+            await restoreClientState();
+          } catch (error) {
+            warn('[Spotify] The listener\'s own repeat and shuffle could not be put back as Folia quits', error);
+          }
+        }
+        if (playerWaits) {
           try {
             await officialClient.closeForQuit();
           } catch (error) {
             warn('[Spotify] Spotify could not be closed as Folia quits', error);
           }
         }
-        // The media session helper is a child process; it ends with the app, and an advertisement
-        // that muted Spotify has its volume given back first.
+        // The media session helper is a child process; it ends with the app.
         await officialClient?.close();
       })();
       const renewal = renewing && Promise.race([renewing.answer.then(() => {}, () => {}), wait(SHUTDOWN_LIMIT_MS)]);
-      const worked = [stopping, playerWaits ? closing : null, renewal].filter(Boolean);
-      if (!playerWaits) closing.catch(() => {});
+      const worked = [stopping, restores ? closing : null, renewal].filter(Boolean);
+      if (!restores) closing.catch(() => {});
       if (worked.length === 0) return null;
       // The whole of it is bounded: a taskkill that hangs or a page that stopped answering ends the
       // quit within SHUTDOWN_LIMIT_MS, and never leaves the quit waiting on a rejection.

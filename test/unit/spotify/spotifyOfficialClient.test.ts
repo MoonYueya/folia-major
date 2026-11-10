@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
@@ -11,17 +11,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // Only a play or the launch switch may close and start it again, once in a run; a status read, a
 // pause, a seek and a queue write never start it and never close it. A page that throws is given one
 // more look with the cached player dropped, and the whole DevTools connection is bounded: a socket
-// that closes before it opened is a refused connection. The advertisement mute script switches on
-// and off. Windows' own tools run by their absolute path. The system media keys Folia holds are not
-// this player's: the module and its tests are generic and live with every route
-// (test/unit/mediaKeys/mediaKeyTakeover.test.ts).
+// that closes before it opened is a refused connection. Windows' own tools run by their absolute
+// path. The system media keys Folia holds are not this player's: the module and its tests are
+// generic and live with every route (test/unit/mediaKeys/mediaKeyTakeover.test.ts).
 
 const require = createRequire(import.meta.url);
 const {
-    QUEUE_SOURCE, START_WAIT_SOURCE, createSpotifyOfficialClient, isAdvertisementItem, repeatModeOf, statusFromMediaSession, statusFromPlayerState,
+    PLAY_STATE_SOURCE, QUEUE_SOURCE, RESTORE_STATE_SOURCE, START_QUEUE_SOURCE, START_WAIT_SOURCE,
+    createSpotifyOfficialClient, isAdvertisementItem, repeatModeOf, statusFromMediaSession, statusFromPlayerState,
 } = require('../../../electron/spotify/officialClient.cjs');
 const { createSpotifyApiBridge, SPOTIFY_OPERATIONS } = require('../../../electron/spotify/spotifyApiBridge.cjs');
 const { spotifyError } = require('../../../electron/spotify/errors.cjs');
+
+import { OnlineProviderError } from '@/types/onlineMusic';
+import { onlineFailureOf, stopsPlayback } from '@/services/onlineMusic/failure/onlineFailureCase';
+import { describeSpotifyFailure } from '@/services/onlineMusic/spotify/spotifyFailure';
 
 const TRACK = '4uLU6hMCjMI75M1A2tKUQC';
 // A call that cannot reach the page costs three connections: the call itself, the look again with
@@ -133,7 +137,8 @@ class FakeSocket {
             this.onmessage?.({ data: JSON.stringify({ id: command.id, result: { result: { value: outcome.value } } }) });
         });
     }
-    close() { this.onclose?.(); }
+    closed = false;
+    close() { this.closed = true; this.onclose?.(); }
 }
 
 const mediaAnswers: Record<string, unknown> = {};
@@ -195,6 +200,8 @@ type ClientOptions = {
     activePort?: number;
     /** What `netstat -ano` answers: the loopback listeners of the machine, as it lays them out. */
     netstat?: string;
+    /** Whether the listener already agreed to a restart. Default true: most tests are about the restart. */
+    consented?: boolean;
 };
 
 const makeClient = (options: ClientOptions = {}) => {
@@ -238,9 +245,12 @@ const makeClient = (options: ClientOptions = {}) => {
     const env = root ? { LOCALAPPDATA: root } : {};
     const warn = vi.fn();
     const log = vi.fn();
+    // Whether the listener already agreed to Folia closing and starting Spotify again: a plain
+    // object, so a test can answer no and then yes in the same run.
+    const consent = { value: options.consented !== false };
     const client = createSpotifyOfficialClient({
         platform: 'win32', env, fetch, spawnProcess, runFile, waitFor, log, warn,
-        port: options.port ?? 9283,
+        port: options.port ?? 9283, restartConsented: () => consent.value,
     });
     // The script a PowerShell was started with: -EncodedCommand is UTF-16LE in base64.
     const scriptOf = (args: string[]) => Buffer.from(String(args[args.indexOf('-EncodedCommand') + 1] ?? ''), 'base64').toString('utf16le');
@@ -252,7 +262,7 @@ const makeClient = (options: ClientOptions = {}) => {
     const spotifySpawns = () => spawned.filter(file => !/powershell\.exe$/i.test(file)).length;
     const taskkills = () => runFile.mock.calls.filter(call => String(call[0]).includes('taskkill')).length;
     const tasklists = () => runFile.mock.calls.filter(call => String(call[0]).includes('tasklist')).length;
-    return { client, runFile, spawnProcess, spawned, procs, fetch, log, warn, helperSpawns, watchSpawns, spotifySpawns, taskkills, tasklists, scriptOf };
+    return { client, consent, runFile, spawnProcess, spawned, procs, fetch, log, warn, helperSpawns, watchSpawns, spotifySpawns, taskkills, tasklists, scriptOf };
 };
 
 beforeEach(() => {
@@ -276,6 +286,359 @@ beforeEach(() => {
 afterEach(() => {
     vi.unstubAllGlobals();
     vi.useRealTimers();
+});
+
+// --- the queue a start leaves alone, driven by a stand-in player -------------------------------
+
+describe('the queue a start leaves of the listener\'s own', () => {
+    const idOf = (letter: string) => letter.repeat(22);
+    type Answer = { cleared?: boolean; canClear?: boolean | null; restored?: boolean; written: string[]; read: string[] | null };
+    const startQueue = (new Function('return (' + String(START_QUEUE_SOURCE) + ')')()) as (input: unknown) => Promise<Answer>;
+
+    /** A player holding `start` behind the song playing, with the queue API the test gives it. */
+    const playerWith = (start: string[], clearQueue?: 'works' | 'noop') => {
+        const held = start.map(idOf);
+        const added: string[] = [];
+        const player: Record<string, unknown> = {
+            getState: () => ({ nextTracks: held.map(id => ({ uri: 'spotify:track:' + id })) }),
+            addToQueue: (entries: { uri: string }[]) => {
+                for (const entry of entries) { held.push(entry.uri.slice(14)); added.push(entry.uri.slice(14)); }
+            },
+        };
+        if (clearQueue === 'works') player.clearQueue = async () => { held.length = 0; };
+        if (clearQueue === 'noop') player.clearQueue = async () => {};
+        return { api: { player }, held, added };
+    };
+    const call = (api: unknown, owned: string[] = []) => startQueue({ api, owned: owned.map(idOf) });
+
+    it('keeps a song the listener queued in the app, where it was', async () => {
+        // The listener queued one of their own in Spotify's window, then picked a song in Folia: a
+        // start empties the queue for its own reason, and that song is not Folia's to take.
+        const app = playerWith(['u'], 'works');
+        const answer = await call(app.api);
+
+        expect(answer.cleared).toBe(true);
+        expect(answer.written).toEqual([]);
+        expect(app.held).toEqual([idOf('u')]);
+    });
+
+    it('keeps every song the listener queued, in the order they were in', async () => {
+        const app = playerWith(['u', 'v'], 'works');
+        await call(app.api);
+        expect(app.held).toEqual([idOf('u'), idOf('v')]);
+    });
+
+    it('leaves the listener\'s songs among Folia\'s where they were, and takes back only Folia\'s', async () => {
+        // Folia wrote b and c behind this song, the listener put u between them: the two of Folia's
+        // were played or are gone, and u keeps the place it held.
+        const app = playerWith(['b', 'u'], 'works');
+        await call(app.api, ['b']);
+        expect(app.held).toEqual([idOf('u')]);
+    });
+
+    it('changes nothing where the app cannot empty its queue', async () => {
+        // A queue that only grows: emptying it would be the only way to take a song back, so
+        // nothing of the listener's is touched and nothing is written here.
+        const app = playerWith(['u'], 'noop');
+        const answer = await call(app.api, ['b']);
+
+        expect(answer.cleared).toBe(false);
+        expect(answer.canClear).toBe(false);
+        expect(answer.written).toEqual([]);
+        expect(app.held).toEqual([idOf('u')]);
+        expect(app.added).toEqual([]);
+    });
+
+    it('says the songs could not be put back rather than failing the start', async () => {
+        const app = playerWith(['u'], 'works');
+        (app.api.player as Record<string, unknown>).addToQueue = () => { throw new Error('refused'); };
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+        const answer = await call(app.api);
+        // The start itself goes on: only the listener's songs are gone, and that is said.
+        expect(answer.restored).toBe(false);
+        expect(answer.written).toEqual([]);
+        expect(warn).toHaveBeenCalled();
+        warn.mockRestore();
+    });
+
+    it('empties nothing where the app offers no clearQueue', async () => {
+        const app = playerWith(['u'], undefined);
+        const answer = await call(app.api, ['b']);
+
+        expect(answer.cleared).toBe(false);
+        expect(answer.written).toEqual([]);
+        expect(app.held).toEqual([idOf('u')]);
+    });
+
+    // 清空之后读不出队列（getState 抛错、或几种名字都说不清）时，没有证据说这一份队列被清掉了：
+    // 不能对整轮声称「能清」。QUEUE_SOURCE 在同样的情况下保留原来的判断（:206-219），这里照它来。
+    it('claims nothing about emptying the queue where it cannot be read back', async () => {
+        const held = [idOf('u')];
+        let cleared = false;
+        const api = { player: {
+            getState: () => {
+                // 清空之前读得出，清空之后就读不出了：这一份说不清，不是空的。
+                if (cleared) throw new Error('the state is not readable now');
+                return { nextTracks: held.map(id => ({ uri: 'spotify:track:' + id })) };
+            },
+            clearQueue: async () => { cleared = true; },
+            addToQueue: () => { throw new Error('nothing may be put back: nothing is known to be gone'); },
+        } };
+        const answer = await call(api, ['b']);
+
+        expect(answer.canClear).not.toBe(true);
+        expect(answer.cleared).toBe(false);
+    });
+});
+
+
+describe('the repeat and the shuffle a play changes in the page', () => {
+    type Changed = { repeat: string | null; shuffle: boolean | null };
+    const settle = (new Function('return (' + String(PLAY_STATE_SOURCE) + ')')()) as (input: unknown) => Promise<Changed>;
+
+    /** A player that reports this repeat and shuffle, and records every call the source made on it. */
+    const playerAt = (state: { repeat?: number; shuffle?: boolean; shuffleKnown?: boolean } = {}) => {
+        const player: Record<string, unknown> = {
+            calls: [] as string[],
+            repeat: state.repeat ?? 0,
+            shuffle: state.shuffle ?? false,
+            getState() {
+                const shown: Record<string, unknown> = { repeat: this.repeat };
+                // A player that does not report a shuffle at all says nothing about it.
+                if (state.shuffleKnown !== false) shown.shuffle = this.shuffle;
+                return shown;
+            },
+            setRepeat: async (value: number) => { (player.calls as string[]).push('setRepeat ' + value); player.repeat = value; },
+            setShuffle: async (value: boolean) => { (player.calls as string[]).push('setShuffle ' + value); player.shuffle = value; },
+        };
+        return player;
+    };
+    const settleWith = (player: Record<string, unknown>) => settle({ api: { player } });
+
+    it('leaves a repeat that is off alone', async () => {
+        const player = playerAt({ repeat: 0 });
+        await expect(settleWith(player)).resolves.toEqual({ repeat: null, shuffle: null });
+        expect(player.calls).toEqual([]);
+    });
+
+    it('turns a repeat of the track off, and says what it was', async () => {
+        const player = playerAt({ repeat: 2 });
+        // Repeat of the track is what stalls a handoff: the app replays this one whatever queue holds.
+        await expect(settleWith(player)).resolves.toEqual({ repeat: 'one', shuffle: null });
+        expect(player.calls).toEqual(['setRepeat 0']);
+    });
+
+    it('leaves a repeat of the list alone: one track is one track, list or not', async () => {
+        // A play names a track uri and no context, which is what the page calls with, so the list
+        // repeat has nothing to repeat here and the player's own setting is the listener's.
+        const player = playerAt({ repeat: 1 });
+        await expect(settleWith(player)).resolves.toEqual({ repeat: null, shuffle: null });
+        expect(player.calls).toEqual([]);
+    });
+
+    it('turns a shuffle off, and says what it was', async () => {
+        // Spotify's shuffle reorders the queue the app plays from: what Folia put behind this song
+        // would come out in another order, so it is turned off for the order Folia wrote.
+        const player = playerAt({ shuffle: true });
+        await expect(settleWith(player)).resolves.toEqual({ repeat: null, shuffle: true });
+        expect(player.calls).toEqual(['setShuffle false']);
+    });
+
+    it('leaves a shuffle that is already off alone', async () => {
+        const player = playerAt({ shuffle: false });
+        await expect(settleWith(player)).resolves.toEqual({ repeat: null, shuffle: null });
+        expect(player.calls).toEqual([]);
+    });
+
+    it('leaves a shuffle a player does not report alone', async () => {
+        const player = playerAt({ shuffleKnown: false });
+        await expect(settleWith(player)).resolves.toEqual({ repeat: null, shuffle: null });
+        expect(player.calls).toEqual([]);
+    });
+
+    it('changes both where both would stall the order, and says what each was', async () => {
+        const player = playerAt({ repeat: 2, shuffle: true });
+        await expect(settleWith(player)).resolves.toEqual({ repeat: 'one', shuffle: true });
+        expect(player.calls).toEqual(['setRepeat 0', 'setShuffle false']);
+    });
+
+    it('says nothing it did not change where the player refuses the call', async () => {
+        const player = playerAt({ repeat: 2 });
+        player.setRepeat = async () => { throw new Error('refused'); };
+        await expect(settleWith(player)).resolves.toEqual({ repeat: null, shuffle: null });
+    });
+});
+
+describe('the repeat and the shuffle Folia put back', () => {
+    /** What a play answers when the page changed this of the listener's state, as the real one does. */
+    const playedWith = (changed: { repeat?: string | null; shuffle?: boolean | null }) => {
+        handle = expression => ({ value: expression.includes('window.__foliaPlay')
+            ? { answer: 'loaded', changed: { repeat: changed.repeat ?? null, shuffle: changed.shuffle ?? null } }
+            : true });
+    };
+
+    it('keeps the original of each one it changed, and only those', async () => {
+        playedWith({ repeat: 'one', shuffle: true });
+        const app = makeClient({ running: true, portAnswers: true });
+        await expect(app.client.play({ id: TRACK, startMs: 0 })).resolves.toBe('loaded');
+        expect(app.client.changedState()).toEqual({ repeat: 'one', shuffle: true });
+        await app.client.close();
+    });
+
+    it('keeps the first original of a run, never the one Folia itself set', async () => {
+        playedWith({ repeat: 'one' });
+        const app = makeClient({ running: true, portAnswers: true });
+        await app.client.play({ id: TRACK, startMs: 0 });
+        // The app was left with repeat of the track off by the play before: a second play has
+        // nothing of its own to change, and what the listener had is still the one first kept.
+        playedWith({});
+        await expect(app.client.play({ id: TRACK, startMs: 0 })).resolves.toBe('loaded');
+        expect(app.client.changedState()).toEqual({ repeat: 'one', shuffle: null });
+        await app.client.close();
+    });
+
+    it('puts both back, forgets them, and answers what was put back', async () => {
+        playedWith({ repeat: 'one', shuffle: true });
+        const app = makeClient({ running: true, portAnswers: true });
+        await app.client.play({ id: TRACK, startMs: 0 });
+        const scripts: string[] = [];
+        // The page put both back, as it answers when it could.
+        handle = expression => {
+            scripts.push(expression);
+            return { value: { repeat: true, shuffle: true } };
+        };
+
+        await expect(app.client.restoreUserState()).resolves.toEqual({ repeat: null, shuffle: null });
+        // What the page was told: repeat of the track (Spotify's 2) and a shuffle that was on.
+        expect(scripts.some(script => script.includes('const repeat = 2') && script.includes('const shuffle = true'))).toBe(true);
+        expect(app.client.changedState()).toEqual({ repeat: null, shuffle: null });
+        await app.client.close();
+    });
+
+    it('forgets one the listener changed themselves meanwhile, rather than trying it again', async () => {
+        playedWith({ repeat: 'one', shuffle: true });
+        const app = makeClient({ running: true, portAnswers: true });
+        await app.client.play({ id: TRACK, startMs: 0 });
+        // The page found both set to something else than what Folia left: they are the listener's
+        // own now, and a record of them would only write over that at the next restore.
+        handle = () => ({ value: { repeat: 'theirs', shuffle: 'theirs' } });
+
+        await expect(app.client.restoreUserState()).resolves.toEqual({ repeat: null, shuffle: null });
+        expect(app.client.changedState()).toEqual({ repeat: null, shuffle: null });
+        await app.client.close();
+    });
+
+    it('keeps one the player refused, so it is tried again', async () => {
+        playedWith({ repeat: 'one', shuffle: true });
+        const app = makeClient({ running: true, portAnswers: true });
+        await app.client.play({ id: TRACK, startMs: 0 });
+        // The page refused the repeat and took the shuffle.
+        handle = () => ({ value: { repeat: false, shuffle: true } });
+
+        await expect(app.client.restoreUserState()).resolves.toEqual({ repeat: 'one', shuffle: null });
+        expect(app.client.changedState()).toEqual({ repeat: 'one', shuffle: null });
+        await app.client.close();
+    });
+
+    it('has nothing to put back, and touches nothing, where it changed nothing', async () => {
+        playedWith({});
+        const app = makeClient({ running: true, portAnswers: true });
+        await app.client.play({ id: TRACK, startMs: 0 });
+        const scripts: string[] = [];
+        handle = expression => {
+            scripts.push(expression);
+            return { value: true };
+        };
+
+        await expect(app.client.restoreUserState()).resolves.toEqual({ repeat: null, shuffle: null });
+        expect(scripts).toEqual([]);
+        await app.client.close();
+    });
+
+    it('never starts or closes Spotify to put it back', async () => {
+        playedWith({ repeat: 'one' });
+        const app = makeClient({ running: true, portAnswers: true, appDirectory: makeLauncherDirectory() });
+        await app.client.play({ id: TRACK, startMs: 0 });
+
+        // Spotify was closed meanwhile: the state it had is gone with it, and starting it again to
+        // put one setting back would be a bigger change than leaving it.
+        FakeSocket.alwaysFail = true;
+        await expect(app.client.restoreUserState()).resolves.toEqual({ repeat: 'one', shuffle: null });
+        expect(app.spotifySpawns()).toBe(0);
+        expect(app.taskkills()).toBe(0);
+        await app.client.close();
+    });
+});
+
+describe('the repeat and the shuffle a restore puts back in the page', () => {
+    type Restore = (input: unknown) => Promise<{ repeat: unknown; shuffle: unknown }>;
+    const restore = (new Function('return (' + String(RESTORE_STATE_SOURCE) + ')')()) as Restore;
+
+    /** A player that reports this repeat and shuffle, and records every call the source made on it. */
+    const playerSaying = (state: { repeat?: number; shuffle?: boolean; unreadable?: boolean }) => {
+        const player: Record<string, unknown> = {
+            calls: [] as string[],
+            repeat: state.repeat ?? 0,
+            shuffle: state.shuffle ?? false,
+            getState() {
+                if (state.unreadable) throw new Error('the state is not readable now');
+                return { repeat: player.repeat, shuffle: player.shuffle };
+            },
+            setRepeat: async (value: number) => { (player.calls as string[]).push('setRepeat ' + value); player.repeat = value; },
+            setShuffle: async (value: boolean) => { (player.calls as string[]).push('setShuffle ' + value); player.shuffle = value; },
+        };
+        return player;
+    };
+    const restoreWith = (player: Record<string, unknown>, repeat: number | null, shuffle: boolean) =>
+        restore({ api: { player }, repeat, shuffle });
+
+    it('puts the repeat of the track back where it is still the one Folia turned off', async () => {
+        // Folia left the app with repeat off; nothing came between that and the restore.
+        const player = playerSaying({ repeat: 0 });
+        await expect(restoreWith(player, 2, false)).resolves.toMatchObject({ repeat: true });
+        expect(player.calls).toEqual(['setRepeat 2']);
+    });
+
+    it('leaves alone a repeat the listener set to the list meanwhile', async () => {
+        // The listener had repeat of the track, Folia turned it off, and they then asked for the
+        // list: that is a setting of their own made after the play, not Folia's to undo.
+        const player = playerSaying({ repeat: 1 });
+        await expect(restoreWith(player, 2, false)).resolves.toMatchObject({ repeat: 'theirs' });
+        expect(player.calls).toEqual([]);
+    });
+
+    it('leaves alone a repeat the listener turned to the track again meanwhile', async () => {
+        const player = playerSaying({ repeat: 2 });
+        await expect(restoreWith(player, 2, false)).resolves.toMatchObject({ repeat: 'theirs' });
+        expect(player.calls).toEqual([]);
+    });
+
+    it('turns a shuffle back on where it is still the off Folia left it as', async () => {
+        const player = playerSaying({ shuffle: false });
+        await expect(restoreWith(player, null, true)).resolves.toMatchObject({ shuffle: true });
+        expect(player.calls).toEqual(['setShuffle true']);
+    });
+
+    it('leaves alone a shuffle the listener turned on meanwhile', async () => {
+        const player = playerSaying({ shuffle: true });
+        await expect(restoreWith(player, null, true)).resolves.toMatchObject({ shuffle: 'theirs' });
+        expect(player.calls).toEqual([]);
+    });
+
+    it('changes nothing at all where the player state cannot be read, and says so', async () => {
+        // Without a state there is no sign the value is still Folia's, so both are kept for the next
+        // restore rather than written over a setting the listener may have made after the play.
+        const player = playerSaying({ unreadable: true });
+        await expect(restoreWith(player, 2, true)).resolves.toMatchObject({ repeat: false, shuffle: false, read: false });
+        expect(player.calls).toEqual([]);
+    });
+
+    it('touches only what the play changed', async () => {
+        const player = playerSaying({ repeat: 1, shuffle: true });
+        await expect(restoreWith(player, null, false)).resolves.toMatchObject({ repeat: false, shuffle: false });
+        expect(player.calls).toEqual([]);
+    });
 });
 
 describe('what a call may do to Spotify', () => {
@@ -333,6 +696,103 @@ describe('what a call may do to Spotify', () => {
         await app.client.close();
     });
 
+    it('does not close a Spotify the listener runs when the restart was never agreed to', async () => {
+        FakeSocket.failuresLeft = FAILED_CONNECTIONS;
+        const app = makeClient({ running: true, portAnswers: false, appDirectory: makeLauncherDirectory(), consented: false });
+        // Spotify is the listener's, running without Folia's port: closing it is a question they have
+        // not answered, so the call stops where it stands and names that answer as its reason.
+        await expect(app.client.play({ id: TRACK, startMs: 0 })).rejects.toMatchObject({
+            code: 'unavailable', reason: 'player-restart-consent',
+        });
+        expect(app.taskkills()).toBe(0);
+        expect(app.spotifySpawns()).toBe(0);
+        await app.client.close();
+    });
+
+    it('closes and starts Spotify once the listener agreed, and remembers the answer for the run', async () => {
+        FakeSocket.failuresLeft = FAILED_CONNECTIONS;
+        const app = makeClient({ running: true, portAnswers: false, appDirectory: makeLauncherDirectory(), consented: false });
+        await expect(app.client.launch()).rejects.toMatchObject({ reason: 'player-restart-consent' });
+        expect(app.taskkills()).toBe(0);
+        // The listener said yes while the player was still up: the next press goes ahead.
+        app.consent.value = true;
+        await expect(app.client.launch()).resolves.toBe(true);
+        expect(app.taskkills()).toBe(1);
+        expect(app.spotifySpawns()).toBe(1);
+        await app.client.close();
+    });
+
+    it('plays at once when the listener agrees after a play was stopped for the question', async () => {
+        FakeSocket.failuresLeft = FAILED_CONNECTIONS;
+        const app = makeClient({ running: true, portAnswers: false, appDirectory: makeLauncherDirectory(), consented: false });
+        await expect(app.client.play({ id: TRACK, startMs: 0 })).rejects.toMatchObject({ code: 'unavailable', reason: 'player-restart-consent' });
+        expect(app.taskkills()).toBe(0);
+
+        // The listener said yes in the question that play raised: that play goes ahead at once.
+        // Spotify was not touched by the start that was never made, so there is no cool-down of a
+        // failed start to wait out, and the app is closed and started again as they agreed.
+        app.consent.value = true;
+        FakeSocket.failuresLeft = FAILED_CONNECTIONS;
+        await expect(app.client.play({ id: TRACK, startMs: 0 })).resolves.toBe('loaded');
+        expect(app.taskkills()).toBe(1);
+        expect(app.spotifySpawns()).toBe(1);
+        await app.client.close();
+    });
+
+    it('still asks before a play that follows a wake-up stopped for the question', async () => {
+        FakeSocket.failuresLeft = FAILED_CONNECTIONS;
+        const app = makeClient({ running: true, portAnswers: false, appDirectory: makeLauncherDirectory(), consented: false });
+        // The wake-up at launch (client_launch) and a play are the same start: the listener has not
+        // agreed to a restart, so the wake-up stops where it stands. The renderer swallows that
+        // failure, and the first song is what tells the listener about it.
+        await expect(app.client.launch()).rejects.toMatchObject({ code: 'unavailable', reason: 'player-restart-consent' });
+        expect(app.taskkills()).toBe(0);
+        expect(app.spotifySpawns()).toBe(0);
+
+        // That wake-up was not a start that failed: Spotify was never touched, so there is no
+        // cool-down to wait out. The play must raise the question in its own words rather than
+        // report an app it cannot reach, or the listener is never asked.
+        await expect(app.client.play({ id: TRACK, startMs: 0 })).rejects.toMatchObject({
+            code: 'unavailable', reason: 'player-restart-consent',
+        });
+        expect(app.taskkills()).toBe(0);
+        expect(app.spotifySpawns()).toBe(0);
+        await app.client.close();
+    });
+
+    it('still holds a play back for thirty seconds after a start that really failed', async () => {
+        FakeSocket.failuresLeft = FAILED_CONNECTIONS;
+        playerNeverFound(() => true);
+        const app = makeClient({ running: false, portAnswers: false, appDirectory: makeLauncherDirectory() });
+        await expect(app.client.play({ id: TRACK, startMs: 0 })).rejects.toMatchObject({ code: 'unavailable', reason: 'player-not-found' });
+        expect(app.spotifySpawns()).toBe(1);
+
+        // That start failed for real: the page loaded and showed no player. A play a moment later is
+        // told the app cannot be reached instead of starting it once more.
+        FakeSocket.failuresLeft = FAILED_CONNECTIONS;
+        await expect(app.client.play({ id: TRACK, startMs: 0 })).rejects.toMatchObject({
+            code: 'unavailable', message: 'The Spotify app cannot be reached',
+        });
+        expect(app.spotifySpawns()).toBe(1);
+
+        // Past the cool-down, a play starts it again.
+        vi.setSystemTime(Date.now() + 31000);
+        FakeSocket.failuresLeft = FAILED_CONNECTIONS;
+        await expect(app.client.play({ id: TRACK, startMs: 0 })).rejects.toMatchObject({ code: 'unavailable', reason: 'player-not-found' });
+        expect(app.spotifySpawns()).toBe(2);
+        await app.client.close();
+    });
+
+    it('starts a Spotify that is not running without asking anything', async () => {
+        FakeSocket.failuresLeft = FAILED_CONNECTIONS;
+        const app = makeClient({ running: false, portAnswers: false, appDirectory: makeLauncherDirectory(), consented: false });
+        // Nothing is closed, so there is no question to answer: the app is only started.
+        await expect(app.client.launch()).resolves.toBe(true);
+        expect(app.taskkills()).toBe(0);
+        expect(app.spotifySpawns()).toBe(1);
+        await app.client.close();
+    });
+
     it('does not ask again within the cool-down after a start that failed', async () => {
         FakeSocket.alwaysFail = true;
         const app = makeClient({ running: true, portAnswers: false, appDirectory: mkdtempSync(join(tmpdir(), 'folia-empty-')) });
@@ -342,6 +802,110 @@ describe('what a call may do to Spotify', () => {
 
         await expect(app.client.play({ id: TRACK, startMs: 0 })).rejects.toMatchObject({ code: 'unavailable' });
         expect(app.fetch.mock.calls.filter(call => String(call[0]).includes('/json/version')).length).toBe(askedOnce);
+        await app.client.close();
+    });
+
+    // The wait for the player belongs to the page, not to the way the start began: a build whose UI
+    // changed answers no player at all however long it is waited for, and the wait for the app and its
+    // page is a different wait from the one for the player inside it. A press is held to the short
+    // wait once the page says it has finished loading - a cold start, a Spotify closed and started
+    // again, and a Spotify already running alike - and a page still loading keeps the whole of the
+    // long one.
+    const playerNeverFound = (loaded: () => boolean, found: () => boolean = () => false) => {
+        handle = expression => {
+            if (expression.includes('window.__foliaPlay')) return { details: 'Error: player-unavailable' };
+            if (expression.includes('document.readyState')) return { value: loaded() };
+            return { value: found() };
+        };
+    };
+
+    it('ends a cold start whose page loaded but showed no player after eight seconds', async () => {
+        FakeSocket.failuresLeft = FAILED_CONNECTIONS;
+        playerNeverFound(() => true);
+        const app = makeClient({ running: false, portAnswers: false, appDirectory: makeLauncherDirectory() });
+        const startedAt = Date.now();
+        await expect(app.client.play({ id: TRACK, startMs: 0 })).rejects.toMatchObject({ code: 'unavailable', reason: 'player-not-found' });
+        expect(Date.now() - startedAt).toBeGreaterThanOrEqual(8000);
+        expect(Date.now() - startedAt).toBeLessThan(15000);
+        await app.client.close();
+    });
+
+    it('gives the same eight seconds to a Spotify it closed and started again', async () => {
+        FakeSocket.failuresLeft = FAILED_CONNECTIONS;
+        playerNeverFound(() => true);
+        const app = makeClient({ running: true, portAnswers: false, appDirectory: makeLauncherDirectory() });
+        const startedAt = Date.now();
+        await expect(app.client.play({ id: TRACK, startMs: 0 })).rejects.toMatchObject({ code: 'unavailable', reason: 'player-not-found' });
+        expect(app.taskkills()).toBe(1);
+        expect(Date.now() - startedAt).toBeGreaterThanOrEqual(8000);
+        expect(Date.now() - startedAt).toBeLessThan(15000);
+        await app.client.close();
+    });
+
+    it('gives the same eight seconds to a Spotify it joined, without closing or starting it', async () => {
+        playerNeverFound(() => true);
+        const app = makeClient({ running: true, portAnswers: true });
+        const startedAt = Date.now();
+        await expect(app.client.play({ id: TRACK, startMs: 0 })).rejects.toMatchObject({ code: 'unavailable', reason: 'player-not-found' });
+        expect(app.taskkills()).toBe(0);
+        expect(app.spotifySpawns()).toBe(0);
+        expect(Date.now() - startedAt).toBeGreaterThanOrEqual(8000);
+        expect(Date.now() - startedAt).toBeLessThan(15000);
+        await app.client.close();
+    });
+
+    // 页面说加载完了就算加载完：不靠 app 里某个 id（Spotify 改版会换掉它，那时这个判断永远为假，
+    // 于是一路空等到第一段的上限）。这里页面 complete、body 在，但既没有 #main 也找不到播放器。
+    it('ends within eight seconds without an element id it was never promised', async () => {
+        FakeSocket.failuresLeft = FAILED_CONNECTIONS;
+        const asked: string[] = [];
+        handle = expression => {
+            asked.push(expression);
+            if (expression.includes('window.__foliaPlay')) return { details: 'Error: player-unavailable' };
+            if (expression.includes('document.readyState')) {
+                // 一个改过版的界面：complete 与 body 都在，但界面里那个 id 已经没有了。
+                // 只有不去问元素 id 的写法才判得出来「页面加载完了」。
+                return { value: !expression.includes('getElementById') };
+            }
+            return { value: false };
+        };
+        const app = makeClient({ running: false, portAnswers: false, appDirectory: makeLauncherDirectory() });
+        const startedAt = Date.now();
+        await expect(app.client.play({ id: TRACK, startMs: 0 })).rejects.toMatchObject({ code: 'unavailable', reason: 'player-not-found' });
+        // 短的那一段照样是 8 秒：不是空等完 25 秒才知道找不到播放器。
+        expect(Date.now() - startedAt).toBeGreaterThanOrEqual(8000);
+        expect(Date.now() - startedAt).toBeLessThan(15000);
+        const askedLoaded = asked.filter(expression => expression.includes('document.readyState'));
+        expect(askedLoaded.length).toBeGreaterThan(0);
+        for (const expression of askedLoaded) expect(expression).not.toContain('getElementById');
+        await app.client.close();
+    });
+
+    it('keeps its long wait for a page that is still loading', async () => {
+        FakeSocket.failuresLeft = FAILED_CONNECTIONS;
+        const startedAt = Date.now();
+        // The page says it is loaded long after the start, and its player shows up past the short
+        // wait: the short wait is counted from the page, not from the start.
+        const loadedAt = startedAt + 18000;
+        const playerAt = startedAt + 23000;
+        handle = expression => {
+            if (expression.includes('window.__foliaPlay')) return { value: 'loaded' };
+            if (expression.includes('document.readyState')) return { value: Date.now() >= loadedAt };
+            return { value: Date.now() >= playerAt };
+        };
+        const app = makeClient({ running: false, portAnswers: false, appDirectory: makeLauncherDirectory() });
+        await expect(app.client.play({ id: TRACK, startMs: 0 })).resolves.toBe('loaded');
+        expect(Date.now() - startedAt).toBeGreaterThanOrEqual(20000);
+        await app.client.close();
+    });
+
+    it('keeps its long wait for a page that never loads', async () => {
+        FakeSocket.failuresLeft = FAILED_CONNECTIONS;
+        playerNeverFound(() => false);
+        const app = makeClient({ running: false, portAnswers: false, appDirectory: makeLauncherDirectory() });
+        const startedAt = Date.now();
+        await expect(app.client.launch()).rejects.toMatchObject({ code: 'unavailable', reason: 'player-not-found' });
+        expect(Date.now() - startedAt).toBeGreaterThanOrEqual(20000);
         await app.client.close();
     });
 
@@ -362,6 +926,52 @@ describe('what a call may do to Spotify', () => {
         const tools = app.runFile.mock.calls.map(call => String(call[0]));
         expect(tools.some(file => file.endsWith('tasklist.exe') && file.includes('System32'))).toBe(true);
         expect(tools.some(file => file.endsWith('taskkill.exe') && file.includes('System32'))).toBe(true);
+        await app.client.close();
+    });
+});
+
+describe('letting the player go', () => {
+    const openSockets = () => FakeSocket.sockets.filter(socket => !socket.closed);
+    // The page answers everything, and the media session answers what the page cannot: the helper is
+    // started only for a call that goes to it, so one is forced there on purpose.
+    const steerBothWays = async (app: ReturnType<typeof makeClient>) => {
+        handle = () => ({ value: true });
+        await app.client.status();
+        expect(openSockets().length).toBe(1);
+        handle = () => ({ details: 'Error: the page does not answer' });
+        mediaAnswers.pause = true;
+        await expect(app.client.pause()).resolves.toBe(true);
+        expect(app.helperSpawns()).toBe(1);
+    };
+
+    it('ends the media session helper and the DevTools connection, and builds both again on the next call', async () => {
+        const app = makeClient({ running: true, portAnswers: true });
+        await steerBothWays(app);
+
+        await app.client.release();
+
+        // Both are let go: the PowerShell helper is ended, and the DevTools connection is closed.
+        expect(app.procs.every((proc: any) => proc.kill.mock.calls.length > 0)).toBe(true);
+        expect(openSockets().length).toBe(0);
+        // Spotify itself is not closed: letting the player go is not the listener closing it.
+        expect(app.taskkills()).toBe(0);
+
+        // Used again, both are made again: the page is opened, and a fresh helper answers.
+        handle = () => ({ value: true });
+        await app.client.status();
+        expect(openSockets().length).toBe(1);
+        handle = () => ({ details: 'Error: the page does not answer' });
+        mediaAnswers.pause = true;
+        await expect(app.client.pause()).resolves.toBe(true);
+        expect(app.helperSpawns()).toBe(2);
+        await app.client.close();
+    });
+
+    it('lets go of what was never started without failing', async () => {
+        const app = makeClient({ running: false, portAnswers: false });
+        await expect(app.client.release()).resolves.toBeUndefined();
+        expect(app.helperSpawns()).toBe(0);
+        expect(openSockets().length).toBe(0);
         await app.client.close();
     });
 });
@@ -411,55 +1021,6 @@ describe('the DevTools connection', () => {
         expect(app.helperSpawns()).toBe(1);
         expect(vi.getTimerCount()).toBe(0);
         await app.client.close();
-    });
-});
-
-describe('the advertisement mute', () => {
-    it('switches the mute on for an advertisement and off again after it', async () => {
-        let advertisement: unknown = { item: { uri: 'spotify:ad:1', metadata: { is_advertisement: 'true' } }, isPaused: false, isBuffering: false, duration: 30000, adMuted: false };
-        handle = expression => (expression.includes('positionAsOfTimestamp') ? { value: advertisement } : { value: true });
-        const app = makeClient({ running: true, portAnswers: true });
-
-        expect((await app.client.status()).ad).toBe(true);
-        // The page keeps the mute: the second read sees it already on, and does not mute again.
-        (advertisement as { adMuted: boolean }).adMuted = true;
-        expect((await app.client.status()).ad).toBe(true);
-        let expressions = FakeSocket.sockets.flatMap(socket => socket.expressions);
-        expect(expressions.filter(text => text.includes('ad.muted = true')).length).toBe(1);
-
-        advertisement = { item: { uri: 'spotify:track:' + TRACK }, isPaused: false, isBuffering: false, duration: 200000, adMuted: true };
-        expect((await app.client.status()).ad).toBe(false);
-        expressions = FakeSocket.sockets.flatMap(socket => socket.expressions);
-        expect(expressions.filter(text => text.includes('ad.muted = false')).length).toBe(1);
-        await app.client.close();
-    });
-
-    it('keeps the mute state apart from the player the page forgets', async () => {
-        let seen = 0;
-        handle = expression => {
-            if (expression.includes('delete window.__foliaSpotify')) return { value: true };
-            seen += 1;
-            return seen === 1 ? { details: 'Error: player-unavailable' } : { value: true };
-        };
-        const app = makeClient({ running: true, portAnswers: true });
-        await app.client.pause();
-        const expressions = FakeSocket.sockets.flatMap(socket => socket.expressions);
-        // Forgetting the player leaves the advertisement state alone, and the calls read it from the window.
-        expect(expressions.find(text => text.includes('delete window.__foliaSpotify'))).not.toContain('__foliaAd');
-        expect(expressions.some(text => text.includes('window.__foliaAd'))).toBe(true);
-        await app.client.close();
-    });
-
-    it('gives a muted advertisement its volume back as Folia quits', async () => {
-        handle = expression => (expression.includes('positionAsOfTimestamp')
-            ? { value: { item: { uri: 'spotify:ad:1', metadata: { is_advertisement: 'true' } }, isPaused: false, isBuffering: false, duration: 30000, adMuted: false } }
-            : { value: true });
-        const app = makeClient({ running: true, portAnswers: true });
-        // The mute is kept in the page, so the page has to be open for it to be given back.
-        expect((await app.client.status()).ad).toBe(true);
-        await app.client.close();
-        const expressions = FakeSocket.sockets.flatMap(socket => socket.expressions);
-        expect(expressions.some(text => text.includes('ad.muted = false'))).toBe(true);
     });
 });
 
@@ -522,49 +1083,69 @@ describe('the bridge over the official client', () => {
     });
 });
 
+describe('what the app\'s failures mean for Folia', () => {
+    it('says the player was not found inside the app apart from the app not being installed', () => {
+        expect(describeSpotifyFailure('audio', new OnlineProviderError('unavailable', 'x', 'spotify', 'player-not-found')))
+            .toEqual({ case: 'unreachable', playerCause: 'player-not-found' });
+        expect(describeSpotifyFailure('audio', new OnlineProviderError('unavailable', 'x', 'spotify', 'player-not-installed')))
+            .toEqual({ case: 'not-configured', playerCause: 'player-not-installed' });
+        // The app not being on this computer is the same answer it always was: a source not set up.
+        expect(describeSpotifyFailure('audio', new OnlineProviderError('unavailable', 'x', 'spotify', 'client-missing')))
+            .toEqual({ case: 'not-configured' });
+    });
+
+    it('says the listener has not agreed to close their Spotify, and stops where it is', () => {
+        const said = describeSpotifyFailure('audio', new OnlineProviderError('unavailable', 'x', 'spotify', 'player-restart-consent'));
+        expect(said).toEqual({ case: 'not-configured', playerCause: 'player-restart-consent' });
+        const shown = onlineFailureOf({ operation: 'audio', providerId: 'spotify' }, { detail: said! });
+        expect(shown.facts.playerCause).toBe('player-restart-consent');
+        expect(stopsPlayback(shown)).toBe(true);
+    });
+
+    it('keeps a player cause it does not know out of the failure it shows', () => {
+        const shown = onlineFailureOf({ operation: 'audio', providerId: 'spotify' }, {
+            detail: { case: 'unreachable', playerCause: 'player-went-for-a-walk' as never },
+        });
+        expect(shown.facts.playerCause).toBeUndefined();
+    });
+});
+
+describe('closing Spotify at the quit', () => {
+    // main.cjs cannot be imported (requiring it boots the app), so what it hands the bridges is read
+    // from the file itself, the way test/unit/electron/ipcSecurity.test.ts pins its own wiring.
+    const mainCjs = readFileSync(join(import.meta.dirname, '../../../electron/main.cjs'), 'utf8');
+
+    it('closes the player at the quit for a listener who never set the switch', async () => {
+        const client = {
+            launch: vi.fn(async () => true), restart: vi.fn(async () => true), play: vi.fn(async () => true),
+            queue: vi.fn(async () => 0), pause: vi.fn(async () => true), resume: vi.fn(async () => true),
+            seek: vi.fn(async () => true), setVolume: vi.fn(async () => true), status: vi.fn(async () => ({ id: TRACK })),
+            available: vi.fn(() => ({ available: true })), closeForQuit: vi.fn(async () => true), close: vi.fn(async () => {}),
+        };
+        // The switch is the main process's to read, and a listener who never set it reads as on:
+        // only a stored false turns it off.
+        const site = mainCjs.match(/const closePlayerOnQuit = store\.get\(CLOSE_EXTERNAL_PLAYER_ON_QUIT_SETTING_KEY\)[^;]*;/)?.[0] ?? '';
+        expect(site).not.toBe('');
+        expect(site).toContain('!== false');
+        expect(site).not.toContain('=== true');
+        // And a session held for it is the one that closes the app.
+        const bridge = createSpotifyApiBridge({
+            store: { get: () => undefined, set: () => {}, delete: () => {} }, safeStorage: {}, fetch: vi.fn(),
+            openExternal: vi.fn(), officialClient: client, now: () => 0, log: () => {}, warn: () => {},
+        });
+        await expect(bridge.shutdown({ closePlayerOnQuit: true })).resolves.toBeUndefined();
+        expect(client.closeForQuit).toHaveBeenCalled();
+    });
+
+    it('keeps the store key the renderer writes', () => {
+        expect(mainCjs).toContain("const CLOSE_EXTERNAL_PLAYER_ON_QUIT_SETTING_KEY = 'CLOSE_EXTERNAL_PLAYER_ON_QUIT';");
+    });
+});
+
 describe('the quit, the helper and the port', () => {
     const makeBridge = (officialClient: any) => createSpotifyApiBridge({
         store: { get: () => undefined, set: () => {}, delete: () => {} }, safeStorage: {}, fetch: vi.fn(),
         openExternal: vi.fn(), officialClient, now: () => 0, log: () => {}, warn: () => {},
-    });
-
-    // The page says an advertisement plays, and keeps the mute the test can watch.
-    const adPlaying = () => {
-        const page = { muted: false, mutedWhenKilled: null as boolean | null };
-        handle = expression => {
-            if (expression.includes('positionAsOfTimestamp')) {
-                return { value: { item: { uri: 'spotify:ad:1', metadata: { is_advertisement: 'true' } }, isPaused: false, isBuffering: false, duration: 30000, adMuted: page.muted } };
-            }
-            if (expression.includes('ad.muted = true')) { page.muted = true; return { value: true }; }
-            if (expression.includes('ad.muted = false')) { page.muted = false; return { value: true }; }
-            return { value: 'loaded' };
-        };
-        return page;
-    };
-
-    it('gives the advertisement mute back before it closes Spotify', async () => {
-        const page = adPlaying();
-        const app = makeClient({ portAnswers: true });
-        const order: string[] = [];
-        app.runFile.mockImplementation((file: string, _args: string[], _options: object, callback: (error: Error | null, stdout?: string) => void) => {
-            if (String(file).includes('taskkill')) {
-                page.mutedWhenKilled = page.muted;
-                order.push('taskkill');
-                callback(null, '');
-                return;
-            }
-            callback(null, '');
-        });
-        expect((await app.client.status()).ad).toBe(true);
-        expect(page.muted).toBe(true);
-        // Quitting has something to wait for only while the mute is still on.
-        expect(app.client.releasePending()).toBe(true);
-
-        await expect(app.client.closeForQuit()).resolves.toBe(true);
-        // The volume was given back before the app was closed, and the page no longer holds a mute.
-        expect(page.mutedWhenKilled).toBe(false);
-        expect(page.muted).toBe(false);
-        expect(app.client.releasePending()).toBe(false);
     });
 
     it('closes Spotify when the port answering is Spotify itself, and leaves the port alone otherwise', async () => {
@@ -614,7 +1195,7 @@ describe('the quit, the helper and the port', () => {
         // The flag lives in main.cjs, which the bridge cannot see: what is pinned here is the one
         // wire the flag leans on — a shutdown that already finished answers nothing to hold, and a
         // second call is what main.cjs must not make.
-        const officialClient: any = { close: vi.fn(async () => {}), releasePending: () => false, closeForQuit: vi.fn(async () => true) };
+        const officialClient: any = { close: vi.fn(async () => {}), closeForQuit: vi.fn(async () => true) };
         const bridge = makeBridge(officialClient);
         expect(await bridge.shutdown()).toBeNull();
         expect(officialClient.closeForQuit).not.toHaveBeenCalled();
@@ -623,7 +1204,7 @@ describe('the quit, the helper and the port', () => {
     it('ends the quit within its limit even when taskkill hangs', async () => {
         const app = makeClient({ portAnswers: true });
         const timeouts: unknown[] = [];
-        app.runFile.mockImplementation((file: string, _args: string[], options: { timeout?: number }, _callback: (error: Error | null, stdout?: string) => void) => {
+        app.runFile.mockImplementation((file: string, args: string[], options: { timeout?: number }) => {
             if (String(file).includes('taskkill')) {
                 timeouts.push(options.timeout);
                 return; // never answers: a taskkill that hangs
@@ -668,60 +1249,6 @@ describe('the quit, the helper and the port', () => {
         expect(taskkillTimeout).toBeLessThan(2000);
     });
 
-    it('counts giving the advertisement mute back inside the quit gate too', async () => {
-        const page = adPlaying();
-        const listeners = '  TCP    127.0.0.1:9283    0.0.0.0:0    LISTENING    1234';
-        const app = makeClient({ port: 0, netstat: listeners });
-        let slowNetstat = false;
-        let probeDelay = 0;
-        let startedAt = 0;
-        let taskkillAt = 0;
-        app.runFile.mockImplementation((file: string, _args: string[], _options: object, callback: (error: Error | null, stdout?: string) => void) => {
-            if (String(file).includes('netstat')) {
-                // A slow netstat: it answers within its own limit, having spent most of the gate.
-                if (!slowNetstat) { callback(null, listeners); return; }
-                setTimeout(() => callback(null, listeners), 1990);
-                return;
-            }
-            if (String(file).includes('taskkill')) {
-                taskkillAt = Date.now() - startedAt;
-                callback(null, '');
-                return;
-            }
-            callback(null, 'INFO: No tasks are running');
-        });
-        const version = { ok: true, json: async () => ({ 'User-Agent': 'Mozilla/5.0 Spotify/1.2.31' }) };
-        app.fetch.mockImplementation(((url: string) => {
-            if (!String(url).includes('/json/version')) {
-                return Promise.resolve({ ok: true, json: async () => [{ type: 'page', url: 'https://xpui.app.spotify.com/', webSocketDebuggerUrl: 'ws://127.0.0.1:9283/devtools/page/1' }] });
-            }
-            if (probeDelay > 0) {
-                const waitMs = probeDelay;
-                probeDelay = 0;
-                return new Promise(resolve => setTimeout(() => resolve(version), waitMs));
-            }
-            return Promise.resolve(version);
-        }) as never);
-        // The port is found and the page reports an advertisement it muted.
-        await expect(app.client.play({ id: TRACK, startMs: 0 })).resolves.toBe('loaded');
-        expect((await app.client.status()).ad).toBe(true);
-        expect(app.client.releasePending()).toBe(true);
-        expect(page.muted).toBe(true);
-
-        // The page stops answering, and the port check before the kill spends most of the budget.
-        FakeSocket.muteSend = true;
-        probeDelay = 150;
-        slowNetstat = true;
-        startedAt = Date.now();
-        const quit = app.client.closeForQuit();
-        await vi.advanceTimersByTimeAsync(4000);
-        await expect(quit).resolves.toBe(true);
-        // Giving the advertisement mute back comes out of the same gate, not from outside it: the
-        // taskkill is still issued inside 3 s.
-        expect(app.taskkills()).toBe(1);
-        expect(taskkillAt).toBeLessThan(3000);
-    });
-
     it('gives up a port it cannot confirm inside the gate instead of holding the quit for it', async () => {
         const app = makeClient({ port: 0, portAnswers: true });
         const startedAt = Date.now();
@@ -754,7 +1281,7 @@ describe('the quit, the helper and the port', () => {
         expect(app.taskkills()).toBe(0);
     });
 
-    it('does not hold the quit when the setting is off and no advertisement is muted', async () => {
+    it('does not hold the quit when the setting is off', async () => {
         const app = makeClient({ portAnswers: true });
         const bridge = makeBridge(app.client);
         expect(await bridge.shutdown()).toBeNull();
@@ -1210,54 +1737,6 @@ describe('a start an advertisement plays before', () => {
         await expect(runRefusing(() => contextOnly)).resolves.toMatchObject({ answer: 'unavailable' });
         const ownBesideContext = { code: 'ONE_TRACK_UNPLAYABLE', reasons: ['NOT_AVAILABLE'], uri: TRACK_URI, contextTrack: { uri: OTHER.uri } };
         await expect(runRefusing(() => ownBesideContext)).resolves.toMatchObject({ answer: 'unavailable' });
-    });
-
-    // The wait mutes the advertisement it runs through with the same body an advertisement between
-    // two songs gets: the page's advertisement state and the mute are watched here.
-    const withMute = (states: unknown[], current: () => boolean = () => true) => {
-        const ad = { muted: false, volumeBeforeAd: null as unknown, volumeDuringAd: null as unknown };
-        const mutes: boolean[] = [];
-        const answer = startWait({
-            api: { player: playerShowing(states) }, uri: TRACK_URI, isAd: isAdvertisementItem, current, ad,
-            setAdMute: async (want: boolean) => { mutes.push(want); ad.muted = want; },
-            sleep: () => Promise.resolve(),
-        });
-        return { answer, mutes, ad };
-    };
-
-    it('mutes the advertisement it waits out and gives the volume back when the track comes', async () => {
-        const waited = withMute([{ item: AD }, { item: AD }, { item: { uri: TRACK_URI } }]);
-        await expect(waited.answer).resolves.toBe('loaded');
-        expect(waited.mutes).toEqual([true, false]);
-        expect(waited.ad.muted).toBe(false);
-    });
-
-    it('leaves an advertisement that outlasts the whole wait muted for the status reads', async () => {
-        const waited = withMute([{ item: AD }]);
-        await expect(waited.answer).resolves.toBe('advertisement');
-        // The advertisement is still sounding: the mute stays on, and the status reads follow it.
-        expect(waited.mutes).toEqual([true]);
-        expect(waited.ad.muted).toBe(true);
-    });
-
-    it('does not touch the volume when no advertisement runs', async () => {
-        const waited = withMute([{ item: OTHER }]);
-        await expect(waited.answer).resolves.toBe('not-loaded');
-        expect(waited.mutes).toEqual([]);
-    });
-
-    it('sends a start whose mute the page can read', async () => {
-        FakeSocket.muteSend = true;
-        const app = makeClient({ running: true, portAnswers: true });
-        const playing = expect(app.client.play({ id: TRACK, startMs: 0, userAction: false })).rejects.toMatchObject({ code: 'network' });
-        await vi.advanceTimersByTimeAsync(70000);
-        await playing;
-        const sent = FakeSocket.sockets.flatMap(socket => socket.expressions).find(text => text.includes('window.__foliaPlay')) ?? '';
-        // The wait's mute is the advertisement mute itself, spliced in as the page's code: the call
-        // has to parse, and the mute it carries is the one an advertisement between songs gets.
-        expect(() => new Function(`return ${sent}`)).not.toThrow();
-        expect(sent).toContain('ad.muted = want');
-        expect(sent).toContain('window.__foliaAd');
     });
 });
 // --- the songs that follow, written into the app's queue, driven by a stand-in player ------------

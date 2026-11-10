@@ -79,7 +79,7 @@ import type { MediaId, ProviderCollection } from './types/onlineMusic';
 import { resolveSongCatalogRef } from './services/onlineMusic/catalogRefs';
 import { omni } from './services/onlineMusic/omni';
 import { consumeProgrammaticPause, playbackFade } from './services/playbackFade';
-import { getSongArtistLabel, getSongCoverUrl } from './services/onlineMusic/songMetadata';
+import { getSongAlbumLabel, getSongArtistLabel, getSongCoverUrl } from './services/onlineMusic/songMetadata';
 import { isNavidromeEnabled } from './services/navidromeService';
 import { useAppNavigation } from './hooks/useAppNavigation';
 import { useNeteaseLibrary } from './hooks/useNeteaseLibrary';
@@ -1012,6 +1012,9 @@ export default function App() {
     const {
         pendingUnavailableReplacement,
         setPendingUnavailableReplacement,
+        pendingExternalPlayerRestart,
+        handleExternalPlayerRestartConfirm,
+        handleExternalPlayerRestartCancel,
         clearPendingUnavailableSkip,
         addOnlineSongToQueue,
         addOnlineSongsToQueue,
@@ -1310,6 +1313,7 @@ export default function App() {
             // upgrades the http: covers netease/kugou still hand out - blocked as mixed content in the
             // packaged window - and keeps only the first of a comma-joined multi-value.
             coverUrl: toSafeRemoteUrl(getSongCoverUrl(stageNextUpTrack)) ?? null,
+            album: getSongAlbumLabel(stageNextUpTrack) || null,
         };
     }, [stageTrackPillMode, stageNextUpTrack]);
     const stageIsNextUp = stageNextUp !== null && (isShowingTail || countdownActive);
@@ -2403,6 +2407,9 @@ export default function App() {
         pendingUnavailableReplacement,
         setPendingUnavailableReplacement,
         handleUnavailableReplacementConfirm,
+        pendingExternalPlayerRestart,
+        handleExternalPlayerRestartConfirm,
+        handleExternalPlayerRestartCancel,
         settingsDialog,
     });
 

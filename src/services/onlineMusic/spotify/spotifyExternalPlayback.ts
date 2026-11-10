@@ -1,6 +1,6 @@
 import type { OnlineExternalPlaybackProvider } from '../../../types/onlineMusic';
 import { spotifyClientPlayback } from './spotifyClientPlayback';
-import { readSpotifyPlaybackMode, spotifyPlaybackMode, spotifySoloistPlayback, subscribeSpotifyPlaybackMode } from './spotifySoloistPlayback';
+import { readSpotifyPlaybackMode, setSpotifyPlaybackMode, spotifyPlaybackMode, spotifySoloistPlayback } from './spotifySoloistPlayback';
 
 // src/services/onlineMusic/spotify/spotifyExternalPlayback.ts
 // Spotify's external player is one of two programs, by the way Spotify plays (spotifySoloistPlayback.ts
@@ -13,17 +13,27 @@ const current = (): OnlineExternalPlaybackProvider => (spotifyPlaybackMode() ===
 export const spotifyExternalPlayback: OnlineExternalPlaybackProvider = {
     // Spotify's own app is not started again by an advance of Folia's own; Soloist's failures are reported.
     stopsAutoAdvanceWhenUnreachable: () => spotifyPlaybackMode() === 'client',
+    // The way back out: an app that is not installed, or a build whose player Folia no longer finds,
+    // is played by Folia itself instead (the standard way). The other program is left as it is.
+    async useStandardPlayback() {
+        await setSpotifyPlaybackMode('standard');
+    },
     isUnreachableFailure: error => (current().isUnreachableFailure?.(error) ?? false),
-    // Only the official app keeps a media session of its own with its own queue in it: the keys are
-    // held while that session sounds, so a press cannot reach Spotify's queue instead of Folia's.
-    // Soloist registers no such session, and its keys stay the ones the app's own media session has.
-    holdsMediaKeys: () => current().holdsMediaKeys?.() === true,
-    // Spotify's own app keeps its media session between Folia's songs too, so while it is the way
-    // Spotify plays, the keys stay Folia's for as long as Folia runs (the setting that asks for them
-    // is the desktop settings'). Soloist registers no session of its own: its keys stay the app's.
-    holdsMediaKeysWhileRunning: () => current().holdsMediaKeysWhileRunning?.() === true,
-    // The way Spotify plays is picked in Folia's own setup, which changes nothing else the app reads.
-    subscribeMediaKeysWanted: listener => subscribeSpotifyPlaybackMode(listener),
+    // Both programs sound the song outside every page of the app, so both take the machine's own
+    // sound for a real spectrum; the other three are the official app's alone. Read from whichever
+    // way is on, so the answers follow a change of it.
+    get capturesSystemAudio() {
+        return current().capturesSystemAudio === true;
+    },
+    get startsWithoutWaiting() {
+        return current().startsWithoutWaiting === true;
+    },
+    get backsOffStatusPolls() {
+        return current().backsOffStatusPolls === true;
+    },
+    get holdsMediaKeysWhilePlaying() {
+        return current().holdsMediaKeysWhilePlaying === true;
+    },
     canPlay: song => current().canPlay?.(song) ?? true,
     isPrepared: song => current().isPrepared?.(song) ?? false,
     async prepareNext(song, upcoming, options) {

@@ -280,6 +280,16 @@ describe('Spotify requests as the account', () => {
         expect(SPOTIFY_OPERATIONS).toContain('query');
     });
 
+    // 这个操作没有任何调用方：渲染进程的 SpotifyOperation 从没有过它，主进程用它自己的
+    // restoreClientState 在离开这种方式、登出、退出时恢复（D30）。留一个没人调的入口只会让人以为
+    // 停止外部播放时会恢复。
+    it('carries no operation for restoring the player state', async () => {
+        expect(SPOTIFY_OPERATIONS).not.toContain('client_restore_state');
+        const { bridge } = setup(() => json({ data: {} }));
+        const answer = await bridge.request('client_restore_state');
+        expect(answer.ok).toBe(false);
+    });
+
     it('renews a token about to run out, once for requests made together, and keeps the new one', async () => {
         const { bridge, store, fetch } = setup(url => (url.includes('/api/token')
             ? json({ access_token: 'renewed-private', expires_in: 3600 }) : json({ data: {} })));
@@ -624,7 +634,7 @@ describe('Spotify playback ways: standard and Soloist', () => {
         available: vi.fn(() => ({ available: true })),
         launch: vi.fn(async () => {}),
         status: vi.fn(async () => ({ id: '', ad: false, isPaused: true, isBuffering: false, positionMs: 0, durationMs: 0 })),
-        releasePending: vi.fn(() => false),
+
         closeForQuit: vi.fn(async () => {}),
         close: vi.fn(async () => {}),
     });
@@ -684,6 +694,31 @@ describe('Spotify playback ways: standard and Soloist', () => {
         // The app is asked about on its own, and Soloist's calls are not sent to it.
         expect(await bridge.request('client_probe')).toEqual({ ok: true, data: { available: true } });
         expect(client.available).toHaveBeenCalledTimes(1);
+    });
+
+    it('lets the player go when the way to play changes or the account signs out', async () => {
+        const client = Object.assign(fakeClient(), { release: vi.fn(async () => {}) });
+        const { bridge, signInWith } = build({ officialClient: client });
+        await signInWith('client');
+        expect((await bridge.request('playback_mode')).data.mode).toBe('client');
+
+        // Leaving Spotify's own app for another way of playing: the helper process and the DevTools
+        // connection go with it, so nothing of Folia's keeps steering an app it no longer plays in.
+        await bridge.request('playback_mode', { mode: 'soloist' });
+        expect(client.release).toHaveBeenCalledTimes(1);
+
+        // Signing out does the same: the account the app was steered as is gone.
+        await signInWith('client');
+        await bridge.request('logout');
+        expect(client.release).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not let the player go when the same way is picked again', async () => {
+        const client = Object.assign(fakeClient(), { release: vi.fn(async () => {}) });
+        const { bridge, signInWith } = build({ officialClient: client });
+        await signInWith('client');
+        await bridge.request('playback_mode', { mode: 'client' });
+        expect(client.release).not.toHaveBeenCalled();
     });
 
     it('does not check the audio key of an account that plays through Spotify\'s own app', async () => {

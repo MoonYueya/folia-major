@@ -15,6 +15,17 @@ const RETRY_MAX_MS = 10 * 60_000;
 
 type CaptureState = 'idle' | 'starting' | 'running';
 
+/**
+ * What the route reports about the machine's sound: where the song sounds, whether its player
+ * declared that its sound never passes through any page of the app, and whether the listener left
+ * the switch for capturing the machine's own sound on. All three have to hold for a capture.
+ */
+export type ExternalSpectrumRequest = {
+    route: string;
+    capturesSystemAudio: boolean;
+    settingOn: boolean;
+};
+
 let state: CaptureState = 'idle';
 let stream: MediaStream | null = null;
 let audioContext: AudioContext | null = null;
@@ -32,6 +43,12 @@ let failureLogged = false;
 let showingCaptured = false;
 /** Bumped whenever the capture is released, so an attempt still in flight sees that it is unwanted. */
 let generation = 0;
+/**
+ * Whether the route wanted the machine's sound at the last sync. Coming back to wanting it (the
+ * listener's switch, or a song whose provider declares the capture) is a fresh attempt even though
+ * no song changed.
+ */
+let wantedSinceLastSync = false;
 let failures = 0;
 let retryAfterMs = 0;
 
@@ -39,6 +56,15 @@ let retryAfterMs = 0;
 const BANDS: ExternalSpectrumBands = { ...emptySpectrumBandLevels(), spectrum: new Uint8Array(SPECTRUM_BINS) };
 
 const bridge = () => (typeof window === 'undefined' ? undefined : window.electron);
+
+/**
+ * The machine's sound is taken through the display-media picker, which a window may not have at all:
+ * a policy can take it away and an older runtime never had it, though the DOM type calls it always
+ * there. Read as the thing it is at runtime rather than trusted.
+ */
+const displayMediaDevices = (): MediaDevices | undefined => (
+    typeof navigator === 'undefined' ? undefined : (navigator as Navigator & { mediaDevices?: MediaDevices }).mediaDevices
+);
 
 /**
  * Whether this build can capture the machine's sound at all. Off Windows there is no loopback in
@@ -49,8 +75,7 @@ const canCapture = (): boolean => {
     const api = bridge();
     return api?.platform === 'win32'
         && typeof api.armExternalSpectrumCapture === 'function'
-        && typeof navigator !== 'undefined'
-        && typeof navigator.mediaDevices?.getDisplayMedia === 'function';
+        && typeof displayMediaDevices()?.getDisplayMedia === 'function';
 };
 
 const stopTracks = (target: MediaStream | null) => {
@@ -69,7 +94,7 @@ const closeCaptureResources = (heldStream: MediaStream | null, heldContext: Audi
     stopTracks(heldStream);
     if (!heldContext) return;
     try {
-        void Promise.resolve(heldContext.close()).catch(error => {
+        void Promise.resolve(heldContext.close()).catch((error: unknown) => {
             console.warn('[ExternalSpectrum] Could not close the capture context', error);
         });
     } catch (error) {
@@ -81,7 +106,7 @@ const closeCaptureResources = (heldStream: MediaStream | null, heldContext: Audi
 const noteCaptureStopped = () => {
     const api = bridge();
     if (typeof api?.noteExternalSpectrumCaptureStopped !== 'function') return;
-    void Promise.resolve(api.noteExternalSpectrumCaptureStopped()).catch(error => {
+    void Promise.resolve(api.noteExternalSpectrumCaptureStopped()).catch((error: unknown) => {
         console.warn('[ExternalSpectrum] Could not report the end of the capture', error);
     });
 };
@@ -166,7 +191,9 @@ export const startExternalSpectrumCapture = async (): Promise<void> => {
 
     if (armFailed === null) {
         try {
-            granted = await navigator.mediaDevices.getDisplayMedia({
+            const devices = displayMediaDevices();
+            if (!devices) throw new Error('this window has no display media to take the machine\'s sound with');
+            granted = await devices.getDisplayMedia({
                 // A picture is required by getDisplayMedia and never wanted here: the smallest, slowest
                 // one the handler can hand over. No frame is ever read from that track.
                 video: { frameRate: { max: 1 }, width: { max: 16 }, height: { max: 16 } },
@@ -213,9 +240,7 @@ export const startExternalSpectrumCapture = async (): Promise<void> => {
 
     let context: AudioContext | null = null;
     try {
-        const AudioContextClass = window.AudioContext
-            || (window as Window & typeof globalThis & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-        context = new AudioContextClass();
+        context = new window.AudioContext();
         // Chromium hands over a suspended context until the page may play, and an analyser on one
         // answers silence for ever: a context that will not run is a failed attempt, not a quiet one.
         await context.resume();
@@ -256,7 +281,7 @@ export const startExternalSpectrumCapture = async (): Promise<void> => {
         // The capture can end on its own (a revoked sharing session, a device that went away): the
         // next frame finds nothing to read and the simulated bands take over.
         for (const track of granted.getTracks()) {
-            track.addEventListener?.('ended', release);
+            track.addEventListener('ended', release);
         }
         console.log('[ExternalSpectrum] Analysing the machine\'s sound');
     } catch (error) {
@@ -272,14 +297,19 @@ export const startExternalSpectrumCapture = async (): Promise<void> => {
  */
 export const readCapturedExternalSpectrum = (): ExternalSpectrumBands | null => {
     const node = analyser;
-    const data = analyserBins;
-    if (state !== 'running' || !node || !data) {
+    if (state !== 'running' || !node) {
         noteCaptured(false);
         return null;
     }
 
-    // Deliberately no exception guard: without it the attempt is dead and the simulated bands are
-    // what the listener sees, which is the right answer for a capture that broke mid-song.
+    // The bin array has to be the length this analyser answers now: one made before a buffer size it
+    // has since changed is a wrong length, and reading into it throws instead of filling what it can.
+    // Remade rather than guarded, so the frame after a change draws real bands again.
+    if (!analyserBins || analyserBins.length !== node.frequencyBinCount) {
+        analyserBins = new Uint8Array(node.frequencyBinCount);
+    }
+    const data = analyserBins;
+
     node.getByteFrequencyData(data);
 
     let loudest = 0;
@@ -328,17 +358,28 @@ export const readCapturedExternalSpectrum = (): ExternalSpectrumBands | null => 
 };
 
 /**
- * Drives the capture from the route the playback store reports: held exactly as long as the route is
- * the external player's, because Folia's own decks would otherwise be captured too once it sounds a
- * song itself. A new song gets a fresh attempt, in case the capture died with the player that carried
- * the last one; every other store change leaves the running capture alone.
+ * Drives the capture from what the route reports: held exactly as long as the machine's sound is
+ * wanted, because Folia's own decks would otherwise be captured too once it sounds a song itself.
+ *
+ * Wanting it takes all three of the route, the provider's declaration and the listener's switch. A
+ * player that declares nothing about where its sound goes never has anything captured, whatever the
+ * switch says; off Windows the arm is refused too (see canCapture).
+ *
+ * `songChanged` gets a fresh attempt, in case the capture died with the player that carried the last
+ * one. Coming back to wanting it - the switch turned on mid-song, or a song whose provider declares
+ * the capture after one that did not - is the same fresh attempt, so a switch is not left waiting
+ * for the next song. Every other store change leaves the running capture alone.
  */
-export const syncExternalSpectrumForRoute = (route: string, songChanged: boolean): void => {
-    if (route !== 'external') {
+export const syncExternalSpectrumForRoute = (request: ExternalSpectrumRequest, songChanged: boolean): void => {
+    const wanted = request.route === 'external' && request.capturesSystemAudio && request.settingOn;
+    if (!wanted) {
+        wantedSinceLastSync = false;
         stopExternalSpectrumCapture();
         return;
     }
-    if (!songChanged) return;
+    const cameBack = !wantedSinceLastSync;
+    wantedSinceLastSync = true;
+    if (!songChanged && !cameBack) return;
     void startExternalSpectrumCapture();
 };
 

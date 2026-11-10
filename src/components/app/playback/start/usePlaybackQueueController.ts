@@ -18,7 +18,7 @@ import { loadOnlineLyricsState } from '../../../../utils/onlineLyricsState';
 import { PlayerState, type StageExternalPlayRequest, type StagePlayerQueueDiffOp, type StagePlayerQueueRequest, type StagePlayerSnapshot } from '../../../../types';
 import type { LocalSong, QueueAddBehavior, SongResult, StatusMessage, UnifiedSong } from '../../../../types';
 import type { AudioQualityPreference, MediaId, OnlineFailureCaseId } from '../../../../types/onlineMusic';
-import type { NextTrackOptions, PlaybackNavigationOptions, UnavailableReplacementRequest } from '../../../../types/appPlayback';
+import type { NextTrackOptions, PlaybackNavigationOptions, UnavailableReplacementRequest, ExternalPlayerRestartRequest } from '../../../../types/appPlayback';
 import type { NavidromeSong } from '../../../../types/navidrome';
 import {
     getOnlineProviderIdForSong,
@@ -63,6 +63,8 @@ import { personalFmEndingsSoFar } from '../personalFmEndings';
 import { loadOnlineSongAudio } from '../source/songAudioSource';
 import { onlineFailureToast } from '../source/onlineFailureToast';
 import { offersRetry, onlineFailureOf, stopsPlayback, type OnlineFailure } from '../../../../services/onlineMusic/failure/onlineFailureCase';
+import { platformNamedText } from '../../../../services/onlineMusic/failure/onlineFailureTexts';
+import { changeExternalPlaybackWay, grantExternalPlayerRestartConsent, playerCauseAction, playerCauseTextKeys } from '../../../../services/onlineMusic/failure/externalPlayerConsent';
 import { openLoginWindow } from '../../../login/loginWindowStore';
 import { useTranslation } from 'react-i18next';
 import { currentTime } from '../../../../stores/motionSignals';
@@ -169,10 +171,14 @@ const UNAVAILABLE_SKIP_CONFIRM_TIMEOUT_MS = 5000;
 const UNAVAILABLE_SKIP_CONFIRM_INTERVAL_MS = 1000;
 // What the one line said after a failure the platform called final says: `facts.skipAtOnce` is set by the
 // platform's own statement, and that statement will not change however often it is asked, so a queue does
-// not look up another version or count down for it.
-const SKIP_AT_ONCE_TEXT: Partial<Record<OnlineFailureCaseId, string>> = {
-    'taken-down': 'status.songUnavailableSkipped',
-    'subscription-required': 'status.songSubscriptionRequiredSkipped',
+// not look up another version or count down for it. A line that names the platform carries the wording
+// without a name as well, said when the platform is not known (see `platformNamedText`).
+const SKIP_AT_ONCE_TEXT: Partial<Record<OnlineFailureCaseId, { text: string; bare?: string }>> = {
+    'taken-down': { text: 'status.songUnavailableSkipped' },
+    'subscription-required': {
+        text: 'status.songSubscriptionRequiredSkipped',
+        bare: 'status.songSubscriptionRequiredSkippedBare',
+    },
 };
 // The nonce of a skip prompt's toast: one toast for the whole count, and a new one for the next song's,
 // even when it says the same.
@@ -191,7 +197,7 @@ const isPassingFailure = (shown: OnlineFailure) => (
 // The platforms' statements (`skipAtOnce` in OnlineFailureDetail) that say the next try ends the same
 // way: a queue skips these at once, with one line about it, instead of asking for another version or
 // counting down. Whatever case carries the mark and is not in here is skipped with no line at all.
-const skipAtOnceText = (shown: OnlineFailure): string | null => (
+const skipAtOnceText = (shown: OnlineFailure): { text: string; bare?: string } | null => (
     shown.facts.skipAtOnce === true ? SKIP_AT_ONCE_TEXT[shown.case] ?? null : null
 );
 
@@ -204,6 +210,26 @@ const pauseWhatIsSounding = (audio: HTMLAudioElement | null) => {
     // The external player gives the song up completely: pressing play again starts it through the
     // play path (which replays a queue that ended), not by resuming a player left at the end.
     if (isExternalRoute()) yieldExternalPlayback('the song stops');
+};
+
+// 本机播放器没装、或者装了却找不到里面那个播放器时说的那句话，和它的出口：改回标准播放。两句话都不提
+// 是哪个平台（原因由平台的 provider 点名，见 failure/externalPlayerConsent.ts），平台名只在有平台时插进去。
+const playerCauseSaid = (shown: OnlineFailure, t: (key: string, values?: Record<string, string | number>) => string): StatusMessage => {
+    const cause = shown.facts.playerCause;
+    const texts = cause ? playerCauseTextKeys(cause) : null;
+    if (!texts) return onlineFailureToast(shown, t);
+    const platform = shown.providerId ? omni.getProviderLabel(shown.providerId) : '';
+    return {
+        type: 'error',
+        text: t(texts.title, { platform }),
+        ...(texts.note ? { note: t(texts.note) } : {}),
+        ...(shown.providerId ? { providerId: shown.providerId } : {}),
+        actionLabel: t('failure.useStandardPlayback'),
+        onAction: () => {
+            setStatusMsg(null);
+            void changeExternalPlaybackWay(shown);
+        },
+    };
 };
 
 // A sign-in that has run out comes with the button that opens the sign-in window for that platform.
@@ -225,6 +251,9 @@ const withSignInAction = (
             },
         };
     }
+    // 本机播放器那几种原因自己带了该做的事（改回标准播放）：平台上的设置清单不能把它换掉，否则
+    // 「没装客户端」这类失败在这台机器上就一条出路也没有了。
+    if (playerCauseAction(shown) === 'change-way') return said;
     const setUp = (shown.case === 'account-refused' || shown.case === 'not-configured') && shown.providerId && omni.hasSetup(shown.providerId) ? shown.providerId : undefined;
     return setUp ? {
         ...said,
@@ -326,6 +355,8 @@ export function usePlaybackQueueController({
     const searchSourceTab = useSearchNavigationStore(state => state.searchSourceTab);
     const searchReturnView = useSearchNavigationStore(state => state.searchReturnView);
 
+    // 还没同意 Folia 关掉并重开他自己那个播放器时，那首歌停在这里等回答：弹窗、回答之后的两次重试都读它。
+    const [pendingExternalPlayerRestart, setPendingExternalPlayerRestart] = useState<ExternalPlayerRestartRequest | null>(null);
     const [pendingUnavailableReplacement, setPendingUnavailableReplacement] = useState<UnavailableReplacementRequest | null>(null);
 
     const appendOnlineSongsToMainQueue = useCallback((songs: SongResult[], options?: { suppressToast?: boolean }) => {
@@ -727,6 +758,9 @@ export function usePlaybackQueueController({
             isAutomixAdvance: undefined,
             autoAdvance: undefined,
             queueRewritten: undefined,
+            // The list this play replaced is replaced once: a skip or a retry after it plays within
+            // the queue that came of it, and the player's queue is Folia's by then.
+            replaceQueue: undefined,
             startAtSec: undefined,
             autoplay: undefined,
             quietLoadedToast: undefined,
@@ -761,7 +795,7 @@ export function usePlaybackQueueController({
             pauseWhatIsSounding(audioRef.current);
             setPlayerState(PlayerState.PAUSED);
             setIsLyricsLoading(false);
-            setStatusMsg({ type: 'info', text: t('status.externalPlayerUnreachable') });
+            setStatusMsg({ type: 'info', text: platformNamedText(t, 'status.externalPlayerUnreachable', 'status.externalPlayerUnreachableBare', providerId) });
         };
 
         // How a failure of this play is shown. The refusals the listener can act on (sign in, a
@@ -776,7 +810,19 @@ export function usePlaybackQueueController({
             // overtaken (`onceShown` in currentSong.ts). Its own answer stays, for the countdown's skip and its cancel.
             isLatestPlaybackRequest.abandon();
             setIsLyricsLoading(false);
-            const said = onlineFailureToast(shown, t);
+            // 本机播放器那三种说了自己原因的情况有各自要人做的事，不问倒计时也不跳下一首：跳过去也一样放不了。
+            const playerAction = playerCauseAction(shown);
+            if (playerAction === 'restart-consent') {
+                // 播放器开着，但没有 Folia 说话的那个端口，而人还没同意关掉它重开：问一次，等回答。
+                shouldAutoPlayRef.current = false;
+                pauseWhatIsSounding(audioRef.current);
+                setPlayerState(PlayerState.IDLE);
+                setStatusMsg(null);
+                setPendingExternalPlayerRestart({ song, queue: queueContext, isFmCall: asFm(), options: deferredPlayOptions });
+                tellFailure(shown, false);
+                return;
+            }
+            const said = playerAction === 'change-way' ? playerCauseSaid(shown, t) : onlineFailureToast(shown, t);
             const stopHere = () => {
                 shouldAutoPlayRef.current = false;
                 pauseWhatIsSounding(audioRef.current);
@@ -817,7 +863,10 @@ export function usePlaybackQueueController({
             };
             if (skipsAtOnce && nextSong && canSkip) {
                 // 平台自己说了再试也是这个结果：不查别的版本，也不等倒计时，说一句就跳下一首。
-                setStatusMsg({ type: 'info', text: t(skipsAtOnce) });
+                const said = skipsAtOnce.bare
+                    ? platformNamedText(t, skipsAtOnce.text, skipsAtOnce.bare, shown.providerId ?? providerId)
+                    : t(skipsAtOnce.text);
+                setStatusMsg({ type: 'info', text: said });
                 tellFailure(shown, true);
                 skipToNextSong(nextSong, true);
                 return;
@@ -1049,7 +1098,10 @@ export function usePlaybackQueueController({
                 // and the name, lyrics and cover of this song are already known here. An advance Folia
                 // made by itself may not wake or restart the player; how a start that fails is taken
                 // is `onExternalStartFailure` above.
-                externalStart = startExternalPlayback(song, options.startAtSec ?? 0, { userAction: options.autoAdvance !== true });
+                externalStart = startExternalPlayback(song, options.startAtSec ?? 0, {
+                    userAction: options.autoAdvance !== true,
+                    ...(options.replaceQueue === true ? { replaceQueue: true } : {}),
+                });
                 void externalStart.started.then(undefined, onExternalStartFailure);
             } else {
                 // Where the platform could not be reached the load asks again by itself while this play is
@@ -1100,6 +1152,10 @@ export function usePlaybackQueueController({
 
         const onlineLyricsState = await loadOnlineLyricsState(song);
         markStart('lyricsMs');
+        // A player whose start answers is shown only once it has the song and the clock is seeded,
+        // which is the wait this play has always taken there; a player whose start is an instruction
+        // hands the play path back at once (see `ExternalPlaybackStart.waited`).
+        if (externalStart) await externalStart.waited;
         // Overtaken during that wait, or the player gave the song up meanwhile: nothing of this song
         // is shown, and the queue stays as it is.
         if (!isLatestPlaybackRequest() || externalStartStopped) {
@@ -1294,7 +1350,7 @@ export function usePlaybackQueueController({
             return;
         }
 
-        void playSong(firstPlayableSong, retainedSongs, false);
+        void playSong(firstPlayableSong, retainedSongs, false, { replaceQueue: true });
     }, [getPlayableOnlineQueue, playSong, setStatusMsg, t]);
 
     // 「插进队列播放」（速记簿的行、搜索结果的播放）：已在队列里的直接播，位置不动；不在的照设置里「加入播放队列」
@@ -1405,6 +1461,27 @@ export function usePlaybackQueueController({
             notifyPlaybackFailed({ song: replacementSong, reason: null, phase: 'play', willAutoSkip: false });
         }
     }, [buildQueueWithReplacementSong, pendingUnavailableReplacement, playSong, setStatusMsg, t]);
+
+    // 同意关掉并重开他自己那个播放器：先记下同意（之后不再问），再把刚才停下的那首歌重新放一遍。
+    const handleExternalPlayerRestartConfirm = useCallback(async () => {
+        const pending = pendingExternalPlayerRestart;
+        if (!pending) return;
+        setPendingExternalPlayerRestart(null);
+        await grantExternalPlayerRestartConsent();
+        // 回答之前整个队列可能已经换过：按回答这一刻的队列重放，队列里没有这首就只放这一首。
+        const live = usePlaybackStore.getState();
+        const liveQueue = live.playQueue;
+        const queue = liveQueue.some(queuedSong => isSamePlaybackSong(queuedSong, pending.song))
+            ? liveQueue
+            : pending.queue;
+        void playSong(pending.song, queue, live.isFmMode, pending.options);
+    }, [pendingExternalPlayerRestart, playSong]);
+
+    // 不同意：不关他的播放器，也不重试这一首，只说一句为什么没放。
+    const handleExternalPlayerRestartCancel = useCallback(() => {
+        setPendingExternalPlayerRestart(null);
+        setStatusMsg({ type: 'info', text: t('status.externalPlayerRestartDeclined') });
+    }, [t]);
 
     const handleSearchResultAddToQueue = useCallback((track: UnifiedSong) => {
         dispatchSearchTrackAction(track, {
@@ -2014,7 +2091,7 @@ export function usePlaybackQueueController({
     }, [handleStagePlayerQueueRequest]);
 
     const shuffleQueue = useCallback(() => {
-        if (!playQueue || !canShuffleQueue(playQueue.length, isFmMode, isNowPlayingStageActive)) return;
+        if (!canShuffleQueue(playQueue.length, isFmMode, isNowPlayingStageActive)) return;
 
         const currentSongKey = currentSong ? getPlaybackSongKey(currentSong) : null;
         let songsToShuffle: SongResult[] = [];
@@ -2057,6 +2134,9 @@ export function usePlaybackQueueController({
     return useStableActionSurface({
         pendingUnavailableReplacement,
         setPendingUnavailableReplacement,
+        pendingExternalPlayerRestart,
+        handleExternalPlayerRestartConfirm,
+        handleExternalPlayerRestartCancel,
         clearPendingUnavailableSkip,
         addOnlineSongToQueue,
         addOnlineSongsToQueue,
