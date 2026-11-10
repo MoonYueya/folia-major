@@ -21,6 +21,7 @@ import type {
 } from './contract';
 import { FOLIUM_SONG_REF_POOL_SIZE, FOLIUM_SONG_REF_PREFIX, toFoliumLoopMode } from './dto';
 import type { FoliumPermissionId } from './shared';
+import { FOLIUM_EXPERIMENTAL } from './shared';
 import { FOLIUM_LYRICS_HELPERS } from './sharedHelpers';
 
 // src/mods/folium/services.ts
@@ -53,8 +54,10 @@ export interface FoliumHostActions {
     /** Already clamped to 0–1 by the service. */
     setVolume: (volume: number) => void;
     setMuted: (muted: boolean) => void;
-    /** The host's own four-state loop; the service reports it as the Folium three. */
+    /** The host's own four-state loop; the service reports it as the Folium three plus `shuffle`. */
     getLoopMode: () => StageLoopMode;
+    /** Personal FM plays its own queue without a loop mode (queueLoopMode), whatever the preference says. */
+    isFmMode: () => boolean;
     setLoopMode: (mode: FoliumLoopMode) => void;
     /** `offset` is a whole number or undefined (centre on the displayed song); `limit` is 1–500. */
     getQueue: (offset: number | undefined, limit: number) => FoliumQueueSnapshot;
@@ -162,6 +165,9 @@ export const createFoliumPlaybackService = (mod: ModRuntimeInfo, context: Folium
         requirePermission(mod, PLAYBACK_CONTROL);
         return requireActions('playback', context);
     };
+    // Shuffle is experimental (`playback.shuffle`): reported as false unless the manifest opted in, so a mod
+    // that never asked about it cannot mistake the user's shuffle for a plain `all`.
+    const reportsShuffle = mod.experimental.includes(FOLIUM_EXPERIMENTAL.playbackShuffle);
     return Object.freeze({
         getState: () => requireActions('playback', context).getPlaybackState(),
         play: () => control().play(),
@@ -191,6 +197,11 @@ export const createFoliumPlaybackService = (mod: ModRuntimeInfo, context: Folium
             control().setMuted(muted);
         },
         getLoopMode: () => toFoliumLoopMode(requireActions('playback', context).getLoopMode()),
+        // Personal FM plays without a loop mode, so a shuffle left in the preference shuffles nothing there:
+        // ask the host whether FM is on rather than reporting a mode the queue does not follow.
+        getShuffle: () => reportsShuffle
+            && !requireActions('playback', context).isFmMode()
+            && requireActions('playback', context).getLoopMode() === 'shuffle',
         setLoopMode: (mode: FoliumLoopMode) => {
             if (!LOOP_MODES.includes(mode)) throw new Error(`playback.setLoopMode: unknown mode "${String(mode)}"`);
             control().setLoopMode(mode);

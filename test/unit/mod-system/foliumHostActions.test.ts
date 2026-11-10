@@ -256,6 +256,75 @@ describe('folium volume, mute and repeat mode', () => {
         createFoliumPlaybackService(mod, 'main').setLoopMode('one');
         expect(useAudioSettingsStore.getState().loopMode).toBe('one');
     });
+
+    it('reports shuffle as the mode all, and as the flag only for a mod that opted in', () => {
+        render(appActions());
+        useAudioSettingsStore.setState({ loopMode: 'shuffle' });
+        const plain = createFoliumPlaybackService(mod, 'main');
+        // Shuffle has no mode of its own: the stable read says all, and the flag stays false unasked.
+        expect(plain.getLoopMode()).toBe('all');
+        expect(plain.getShuffle()).toBe(false);
+
+        const optedIn = createFoliumPlaybackService({ ...mod, experimental: ['playback.shuffle'] }, 'main');
+        expect(optedIn.getLoopMode()).toBe('all');
+        expect(optedIn.getShuffle()).toBe(true);
+        useAudioSettingsStore.setState({ loopMode: 'one' });
+        expect(optedIn.getShuffle()).toBe(false);
+    });
+
+    it('reports no shuffle in Personal FM, where the queue plays without any loop mode', () => {
+        render(appActions());
+        const optedIn = createFoliumPlaybackService({ ...mod, experimental: ['playback.shuffle'] }, 'main');
+        useAudioSettingsStore.setState({ loopMode: 'shuffle' });
+
+        usePlaybackStore.setState({ isFmMode: false });
+        expect(optedIn.getShuffle()).toBe(true);
+
+        // Personal FM plays its queue without a loop mode (queueLoopMode), so the preference on screen
+        // is not what plays: the flag says false while the stable read keeps reporting all.
+        usePlaybackStore.setState({ isFmMode: true });
+        expect(optedIn.getLoopMode()).toBe('all');
+        expect(optedIn.getShuffle()).toBe(false);
+
+        usePlaybackStore.setState({ isFmMode: false });
+        expect(optedIn.getShuffle()).toBe(true);
+    });
+
+    it('leaves the preference alone when a mod asks for all during a shuffle in Personal FM', () => {
+        render(appActions());
+        const playback = createFoliumPlaybackService(mod, 'main');
+        useAudioSettingsStore.setState({ loopMode: 'shuffle' });
+        usePlaybackStore.setState({ isFmMode: true });
+        useStatusMessageStore.setState({ message: null });
+        const stored = localStorage.getItem('player_loop_mode');
+
+        // The all-during-shuffle guard runs first, so this is the empty call it is outside FM too: the
+        // mode stays, nothing is toasted and nothing is stored. The FM check never sees it.
+        playback.setLoopMode('all');
+        expect(useAudioSettingsStore.getState().loopMode).toBe('shuffle');
+        expect(useStatusMessageStore.getState().message).toBeNull();
+        expect(localStorage.getItem('player_loop_mode')).toBe(stored);
+    });
+
+    it('leaves a running shuffle alone when a mod asks for all, and still sets the other modes', () => {
+        render(appActions());
+        const playback = createFoliumPlaybackService(mod, 'main');
+        useAudioSettingsStore.setState({ loopMode: 'shuffle' });
+
+        // All is what shuffle already reads as, so asking for it cannot mean "turn shuffle off".
+        playback.setLoopMode('all');
+        expect(useAudioSettingsStore.getState().loopMode).toBe('shuffle');
+
+        playback.setLoopMode('one');
+        expect(useAudioSettingsStore.getState().loopMode).toBe('one');
+        playback.setLoopMode('all');
+        expect(useAudioSettingsStore.getState().loopMode).toBe('all');
+        playback.setLoopMode('off');
+        expect(useAudioSettingsStore.getState().loopMode).toBe('off');
+        // A mod can never reach the shuffle mode itself: its three modes do not include one.
+        expect(() => playback.setLoopMode('shuffle' as never)).toThrow('playback.setLoopMode: unknown mode "shuffle"');
+        expect(useAudioSettingsStore.getState().loopMode).toBe('off');
+    });
 });
 
 describe('folium play queue', () => {

@@ -40,6 +40,7 @@
         "omniHooks": "omni.hooks",
         "ponderTargets": "ponder.targets",
         "playerLayout": "player.layout",
+        "playbackShuffle": "playback.shuffle",
         "remoteActions": "remote.actions",
         "platformRaw": "platform.raw"
     },

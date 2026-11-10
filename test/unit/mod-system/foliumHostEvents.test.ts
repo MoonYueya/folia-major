@@ -221,6 +221,29 @@ describe('Folium 1.5 playback notifications', () => {
         expect(handler.mock.calls).toEqual([[{ mode: 'all' }], [{ mode: 'off' }]]);
     });
 
+    it('reports a shuffle as the mode all, with the payload the event always had', () => {
+        const handler = vi.fn();
+        addFoliumEventHandler('mod-a', 'playback.loopModeChanged', handler);
+        useAudioSettingsStore.setState({ loopMode: 'all' });
+        handler.mockClear();
+
+        useAudioSettingsStore.getState().handleSetLoopMode('shuffle');
+        useAudioSettingsStore.getState().handleSetLoopMode('one');
+        // Entering and leaving shuffle are changes of the host mode, so they fire like any other, each
+        // carrying the mode it mapped to: shuffle reads as all, hence the repeat in the middle.
+        expect(handler.mock.calls).toEqual([[{ mode: 'all' }], [{ mode: 'one' }]]);
+
+        useAudioSettingsStore.getState().handleSetLoopMode('shuffle');
+        expect(handler.mock.calls).toEqual([[{ mode: 'all' }], [{ mode: 'one' }], [{ mode: 'all' }]]);
+
+        // all to shuffle is a change of the host mode too, and it carries the same payload as the all it
+        // left: a mod watching the mode cannot tell the two apart, which is why getShuffle exists.
+        useAudioSettingsStore.getState().handleSetLoopMode('all');
+        handler.mockClear();
+        useAudioSettingsStore.getState().handleSetLoopMode('shuffle');
+        expect(handler.mock.calls).toEqual([[{ mode: 'all' }]]);
+    });
+
     it('turns the queue changes of one task into one event, read once they settled', async () => {
         const handler = vi.fn();
         addFoliumEventHandler('mod-a', 'playback.queueChanged', handler);

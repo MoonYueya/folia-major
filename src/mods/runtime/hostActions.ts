@@ -135,8 +135,14 @@ export const useFoliumHostActions = (actions: FoliumAppActions) => {
             setVolume: (volume) => useAudioSettingsStore.getState().handleSetVolume(volume),
             setMuted: (muted) => useAudioSettingsStore.getState().handleSetMuted(muted),
             getLoopMode: () => useAudioSettingsStore.getState().loopMode,
+            isFmMode: () => usePlaybackStore.getState().isFmMode,
             // Not gated on Stage playback, like the remote window's repeat button: the mode is a lasting preference.
-            setLoopMode: (mode) => useAudioSettingsStore.getState().handleSetLoopMode(mode),
+            // 模组只认三态，随机对它们报的是 'all'：再要一次 'all' 就什么都不做，别把用户开着的随机顺手关掉。
+            setLoopMode: (mode) => {
+                const current = useAudioSettingsStore.getState().loopMode;
+                if (mode === 'all' && current === 'shuffle') return;
+                useAudioSettingsStore.getState().handleSetLoopMode(mode, usePlaybackStore.getState().isFmMode);
+            },
             getQueue: (offset, limit) => buildFoliumQueueSnapshot(usePlaybackStore.getState(), offset, limit),
             playQueueItem: async (index, expectedRef) => {
                 const request = resolveFoliumQueuePlayRequest(usePlaybackStore.getState(), index, expectedRef);

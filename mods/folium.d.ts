@@ -1110,7 +1110,10 @@ export interface FoliumNotificationEvents {
     'playback.likeChanged': { readonly liked: boolean };
     /** The volume or the mute switch changed, whoever changed it. */
     'playback.volumeChanged': { readonly volume: number; readonly muted: boolean };
-    /** The repeat mode changed. */
+    /**
+     * The repeat mode changed. Switching between shuffle and `all` fires it too, with the same
+     * `mode: 'all'` payload: read `playback.getShuffle()` to tell the two apart.
+     */
     'playback.loopModeChanged': { readonly mode: FoliumLoopMode };
     /**
      * The queue changed, or the displayed song moved within it. Only the outline: call
@@ -1357,8 +1360,19 @@ export interface FoliumPlaybackService {
     /** The repeat mode. */
     getLoopMode(): FoliumLoopMode;
     /**
+     * EXPERIMENTAL (`playback.shuffle`): the user turned shuffle on. Shuffle has no mode of its own - the
+     * queue plays this round's shuffled order and `getLoopMode()` reads `all` for it - so read this beside
+     * it. False without the manifest opt-in, and for every mode but shuffle: `off` and `one` do not
+     * shuffle, and `getLoopMode()` alone cannot tell shuffle from `all`. Always false in Personal FM,
+     * whose queue the station refills instead of looping, so a shuffle left in the preference plays nothing
+     * there even though `getLoopMode()` still reads `all`.
+     */
+    getShuffle(): boolean;
+    /**
      * Sets the repeat mode; the host reports the change like its own repeat button does.
-     * Setting the mode already in effect does nothing. Needs `playback.control`.
+     * Setting the mode already in effect does nothing. Shuffle is not one of them: this cannot turn
+     * it on, and asking for `all` while the user shuffles leaves the shuffle alone. Needs
+     * `playback.control`.
      */
     setLoopMode(mode: FoliumLoopMode): void;
     /**

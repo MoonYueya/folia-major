@@ -113,7 +113,7 @@ const fakeActions = () => ({
     playSongRef: vi.fn(async () => true), enqueueSongRef: vi.fn(() => true),
     shuffleQueue: vi.fn(() => true), toggleLike: vi.fn(() => false),
     getVolume: vi.fn(() => ({ volume: 0.4, muted: true })), setVolume: vi.fn(), setMuted: vi.fn(),
-    getLoopMode: vi.fn(() => 'all' as const), setLoopMode: vi.fn(),
+    getLoopMode: vi.fn(() => 'all' as const), isFmMode: vi.fn(() => false), setLoopMode: vi.fn(),
     getQueue: vi.fn(() => ({ items: [], length: 0, currentIndex: -1, kind: 'queue' as const, version: 'v' })),
     playQueueItem: vi.fn(async () => true),
     replaceQueue: vi.fn(() => ({ status: 'replaced' as const, version: 'v2', length: 0, currentIndex: -1 })),

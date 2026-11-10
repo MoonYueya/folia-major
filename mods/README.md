@@ -159,7 +159,7 @@ client 只能用相对路径 import 模组目录里的 `.mjs/.js`，**不能 imp
 | `depends` | 模组 id 或 `id@^1.2.3`（仅支持 `^` 与 `*`）。缺失、版本不符、成环或依赖未启用时，只有该依赖子图不加载 |
 | `permissions` | 见下表。未知权限直接拒绝 |
 | `embedOrigins` | `folium.ui.embed` 可以加载的 https origin（形如 `https://host[:port]`），需要 `net.embed` |
-| `experimental` | 选用的实验接口：`omni.providers`、`omni.hooks`、`ponder.targets`、`player.layout`、`remote.actions`、`platform.raw`（1.7） |
+| `experimental` | 选用的实验接口：`omni.providers`、`omni.hooks`、`ponder.targets`、`player.layout`、`remote.actions`、`playback.shuffle`、`platform.raw`（1.7） |
 | `folia` | 可选。宿主版本范围（空格分隔的比较式，支持 `>= > <= < = ^` 与 `*`）；宿主版本不在范围内时加载器拒绝加载（`host-version-mismatch`） |
 
 | 权限 | 解锁 |
@@ -259,6 +259,7 @@ export default function activate(folium) {
 | `experimental['ponder.targets']` | 思索（应用内教程）目标 | 实验 |
 | `FoliumStageContext.getLayout()` | 播放页只读布局快照（需选用 `player.layout`） | 实验 |
 | `experimental['remote.actions']` | 在独立遥控窗口末尾追加宿主绘制的按钮 | 实验 |
+| `playback.getShuffle()` | 用户是不是开着随机播放（需选用 `playback.shuffle`） | 实验 |
 
 ### 宿主托管容器
 
@@ -666,8 +667,9 @@ CSS 放进 `@layer folium-mods`（在 Tailwind 各层之后声明），不用 `!
 - `getVolume()` 返回 `{ volume, muted }`，`volume` 在 0–1，静音开关独立于音量。`setVolume(volume)` 夹到 0–1，和宿主的音量滑块一样，
   不动静音开关；每次调用都会保存，所以只设最终值，不要拿它做渐变。`setMuted(muted)` 是设值而不是切换，两边同时操作不会互相抵消。
   参数不是有限数 / 布尔值时抛错。
-- `getLoopMode()` / `setLoopMode(mode)`：`'off' | 'all' | 'one'`。设成新值时宿主像点自己的循环按钮一样弹提示；设成当前值什么都不做；
-  未知值抛错。外部 Stage 播放时也能设，循环模式是持久的偏好。
+- `getLoopMode()` / `setLoopMode(mode)`：`'off' | 'all' | 'one'`。随机播放不在其中：它对模组读作 `'all'`，
+  模组也设不了 `'shuffle'`（抛 `unknown mode`），要读随机见 [playback.shuffle](#playbackshuffle实验)。设成新值时宿主像点自己的循环按钮一样弹提示；
+  设成当前值什么都不做；未知值抛错。外部 Stage 播放时也能设，循环模式是持久的偏好。
 - `getQueue({ offset, limit })` 返回队列的一页 `{ items, length, currentIndex, kind, version }`：
   - `items` 是 `{ song, index }[]`，`index` 是在整个队列里的位置，`version` 一变就过期（见 `playback.queueChanged`）。
   - `length` 是整个队列的长度；`currentIndex` 是显示中的歌在队列里第一次出现的位置，不在队列里时为 -1。
@@ -1480,6 +1482,27 @@ export default function activate(folium) {
 ```
 
 `dev/folium/player-layout-demo` 提供无账号、无网络、可停用恢复的完整示例。
+
+### playback.shuffle（实验）
+
+清单声明 `"experimental": ["playback.shuffle"]` 后，`folium.playback.getShuffle()` 回答用户是不是开着随机播放。
+这是 **EXPERIMENTAL (`playback.shuffle`)**，不需要额外权限（和 `getLoopMode()` 一样只要求在主窗口）。
+
+- 随机没有自己的循环模式：这一轮按洗好的排列走，`getLoopMode()` 对它报的仍是 `'all'`，所以随机的状态只能靠这个成员读。
+  两个都读，不要拿 `getLoopMode() === 'all'` 当随机。
+- 语义是「用户开着随机」，不是「这一轮洗过牌」：用户开随机之后，`folium.playback.shuffleQueue()` 打乱过一次也不会改变它。
+- 未选用 `playback.shuffle` 时恒为 `false`，没有问过这件事的模组不会把随机误当成列表循环。
+- 私人 FM 里恒为 `false`：电台的队列由电台续上，不绕回队首也不洗，随机偏好在那里什么都没做，`getLoopMode()` 照旧报 `'all'`。
+- 随机时 `setLoopMode('all')` 是空操作：模组只认三种模式，随机对它们读作 `'all'`，再要一次 `'all'` 不能顺手把用户的随机关掉。
+  要换成别的模式就直接设那个模式。
+- `'shuffle'` 不是模组能设的模式，`setLoopMode('shuffle')` 抛 `unknown mode`。
+- 随机和 `'all'` 之间来回切换都会发 `playback.loopModeChanged`，载荷相同，都是 `{ mode: 'all' }`；要分辨，就在事件里再读一次 `getShuffle()`。
+
+```js
+const playback = folium.playback;
+playback.getShuffle();   // true：用户开着随机；未选用、私人 FM、别的模式都是 false
+playback.getLoopMode();  // 'all'：随机和列表循环都读作它
+```
 
 ### remote.actions：独立遥控窗口追加按钮
 

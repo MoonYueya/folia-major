@@ -248,7 +248,8 @@ export const toFoliumPlaybackFailureReason = (reason: OnlineFailureCaseId | null
 
 /**
  * The repeat mode as mods see it, the host's four-state loop taken to the Folium three: shuffle repeats the
- * queue in a shuffled order, so it is reported as `all`.
+ * queue in a shuffled order, so it is reported as `all`. Whether the user is shuffling is the experimental
+ * `playback.shuffle` flag behind `playback.getShuffle()`, which reads the host mode itself.
  */
 export const toFoliumLoopMode = (mode: StageLoopMode): FoliumLoopMode => (mode === 'shuffle' ? 'all' : mode);
 
