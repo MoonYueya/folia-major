@@ -513,6 +513,37 @@ describe('a session restored onto a player that is on another track', () => {
         expect(playMock).not.toHaveBeenCalled();
     });
 
+    it('keeps the song asked for while the take-over waited on the screen where the take-over fails', async () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+        runningStatusMock.mockImplementation(async () => status('bodian-other', true));
+        // The take-over waits on the player; the listener asks for another song while it waits.
+        adoptMock.mockImplementation(async () => {
+            askForSong(following);
+            return false;
+        });
+
+        await restore({ queue });
+
+        // That ask keeps the screen: the remembered song is not shown again behind it.
+        expect(setCurrentSongMock).not.toHaveBeenCalledWith(song);
+        expect(setPlayQueueMock).not.toHaveBeenCalled();
+        expect(warn).toBeDefined();
+    });
+
+    it('writes nothing of the track where another song was asked for while the take-over waited', async () => {
+        runningStatusMock.mockImplementation(async () => status('bodian-other', true));
+        adoptMock.mockImplementation(async () => {
+            askForSong(following);
+            return true;
+        });
+
+        await restore({ queue });
+
+        // The ask owns the queue now: the track taken over is not put in it and not saved with it.
+        expect(setPlayQueueMock).not.toHaveBeenCalled();
+        expect(persistMock).not.toHaveBeenCalled();
+    });
+
     it('drops a track looked up after another song was asked for', async () => {
         runningStatusMock.mockImplementation(async () => status('bodian-other', true));
         getSongDetailMock.mockImplementation(async () => {
