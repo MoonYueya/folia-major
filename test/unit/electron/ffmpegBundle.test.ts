@@ -83,6 +83,12 @@ describe("bundled Folia FFmpeg archive extraction", () => {
 
     const plan = archiveExtractionPlan(nativeArchive, nativeDestination);
     expect(plan.args[1]).not.toBe(nativeArchive);
+  });
+
+  // Only a Windows path carries the backslashes GNU tar misreads; on Linux and macOS the
+  // destination is already spelled with forward slashes and passes through unchanged.
+  it.runIf(path.sep === "\\")("respells a Windows destination with forward slashes", () => {
+    const plan = archiveExtractionPlan(nativeArchive, nativeDestination);
     expect(plan.args[3]).not.toBe(nativeDestination);
   });
 });
