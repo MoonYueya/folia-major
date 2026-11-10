@@ -91,7 +91,7 @@ const { YTM_AUDIO_PRIVILEGED_SCHEME, YTM_AUDIO_SCHEME } = require('./ytm/audio.c
 const { createSpotifyApiBridge } = require('./spotify/spotifyApiBridge.cjs');
 const { createMediaKeyTakeover } = require('./mediaKeys.cjs');
 const { createQuitShutdownGate } = require('./quitShutdown.cjs');
-const { CLOSE_PLAYER_ON_QUIT_SETTING_KEY, carryClosePlayerOnQuitSetting } = require('./closePlayerOnQuitSetting.cjs');
+const { carryClosePlayerOnQuitSetting } = require('./closePlayerOnQuitSetting.cjs');
 const { SPOTIFY_AUDIO_PRIVILEGED_SCHEME, SPOTIFY_AUDIO_SCHEME } = require('./spotify/audio.cjs');
 const { createQqAuthSessionRepository } = require('./qq/qqAuthSessionRepository.cjs');
 const { DEFAULT_DISCORD_APPLICATION_ID, createDiscordPresenceController } = require('./discordPresence.cjs');
@@ -6698,7 +6698,6 @@ app.on('window-all-closed', () => {
 // writes and the contract test pins it here; the module's own test pins the same value, so a rename
 // in either place fails a test instead of drifting silently.
 const CLOSE_EXTERNAL_PLAYER_ON_QUIT_SETTING_KEY = 'CLOSE_EXTERNAL_PLAYER_ON_QUIT';
-const closePlayerOnQuitSetting = createClosePlayerOnQuitSetting(store);
 
 // The bridges whose work under way holds a quit, each through its shutdown() (see before-quit).
 const quitHoldingBridges = [ytmApiBridge, spotifyApiBridge];
