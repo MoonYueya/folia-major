@@ -124,6 +124,35 @@ const panelListScroll = (page: Page) => page.evaluate(() => {
     return { top: scroller?.scrollTop ?? 0, scrollable: Boolean(scroller) };
 });
 
+/**
+ * 惯性尾巴要按一帧一发送。真实 setTimeout(16) 在主线程忙的时候会漂到 17~35ms，一旦越过
+ * SEAM_WHEEL_REPEAT_GAP_MS（30），判据 2 的间隔那一条就失效，相等的平台期会被当成新的一手。
+ * 所以这里用 page.clock：先 install 再 pauseAt，之后的页面时间只由 runFor 推进。
+ * 暂停之后那次读数顺带钉住「接管的是页面里的 performance.now」——真浏览器里跑一次，不是只看文档：
+ * 读一次、runFor(16) 之后再读一次，差值必须正好 16（没接管时这个差值会是几十毫秒）。
+ */
+const pauseSeamClock = async (page: Page) => {
+    await page.clock.install({ time: new Date('2030-01-01T00:00:00Z') });
+    await page.clock.pauseAt(new Date('2030-01-01T00:00:05Z'));
+    const before = await page.evaluate(() => performance.now());
+    await page.clock.runFor(16);
+    expect(await page.evaluate(() => performance.now()) - before).toBe(16);
+};
+
+/** 往信息条上送一发 wheel，回这一发有没有被拦（被墙接住就是拦了）。 */
+const sendSeamWheel = (page: Page, point: { x: number; y: number }, deltaY: number) => page.evaluate(({ point, deltaY }) => {
+    const element = document.querySelector<HTMLElement>('[data-bravais-seam] .bravais-seam-row-info')!;
+    const event = new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY, clientX: point.x, clientY: point.y });
+    element.dispatchEvent(event);
+    return event.defaultPrevented;
+}, { point, deltaY });
+
+/** 把信息条的位置拨到顶 / 到底：真实排版算出来的尺寸，不是桩。 */
+const scrollInfoTo = (page: Page, edge: 'top' | 'bottom') => page.evaluate(edge => {
+    const element = document.querySelector<HTMLElement>('[data-bravais-seam] .bravais-seam-row-info')!;
+    element.scrollTop = edge === 'top' ? 0 : element.scrollHeight;
+}, edge);
+
 test.describe('[bravais-only] wheel over the seam', () => {
     test('wheeling over the info strip, the spine and the title scrolls the wall like the wall itself does', async ({ mount, page }) => {
         await mountBravais(mount, page);
@@ -236,27 +265,32 @@ test.describe('[bravais-only] wheel over the seam', () => {
         expect(await worldTransform(page)).toBe(worldBefore);
 
         // 甩到底：同一手势里剩下的惯性事件留在信息条边上，不接着推墙（修好之前会「滚完简介接着推墙」）。
-        // 这一段按触控板的样子送（deltaY 12，系统惯性的峰值也在这个量级），整段在 160ms 的手势锁里一次派发完：
+        // 这一段按系统惯性的样子送（deltaY 从 12 逐发衰减到 1，间隔一帧），整段在 160ms 的手势锁里一次派发完：
         // 能滚的一下 + 甩到底 + 惯性尾巴，不用 mouse.wheel 一来一回（那是几百毫秒，早就被当成新手势了）。
-        const tail = await page.evaluate(point => {
-            const element = document.querySelector<HTMLElement>('[data-bravais-seam] .bravais-seam-row-info')!;
-            const prevented: boolean[] = [];
-            const send = () => {
-                const event = new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: 12, clientX: point.x, clientY: point.y });
-                element.dispatchEvent(event);
-                prevented.push(event.defaultPrevented);
-            };
-            element.scrollTop = 0;
-            send();
-            element.scrollTop = element.scrollHeight;
-            send();
-            send();
-            send();
-            return prevented;
-        }, point);
-        // 第一下容器自己滚（不拦），甩到底之后的三下仍然归它（惯性尾巴），一下都不推墙。
-        expect(tail).toEqual([false, false, false, false]);
+        // 间隔由 page.clock 精确推进，见 pauseSeamClock。
+        await pauseSeamClock(page);
+        await scrollInfoTo(page, 'top');
+        expect(await sendSeamWheel(page, point, 12)).toBe(false);
+        await scrollInfoTo(page, 'bottom');
+        // 第一下容器自己滚（不拦），甩到底之后剩下的惯性每一发都比上一发小，仍然归它，一下都不推墙。
+        for (const deltaY of [8, 5, 3, 2, 1]) {
+            await page.clock.runFor(16);
+            expect(await sendSeamWheel(page, point, deltaY)).toBe(false);
+        }
         expect(await worldTransform(page)).toBe(worldBefore);
+
+        // 真实惯性尾巴里相邻两发常相等（系统按帧送，合并之后数值不变）：…8,8,5,5,3,2,2,1,1 整段也不推墙。
+        // 这一段的间隔按一帧（16ms）送，和系统惯性一致。
+        await scrollInfoTo(page, 'top');
+        expect(await sendSeamWheel(page, point, 8)).toBe(false);
+        await scrollInfoTo(page, 'bottom');
+        for (const deltaY of [8, 5, 5, 3, 2, 2, 1, 1]) {
+            await page.clock.runFor(16);
+            expect(await sendSeamWheel(page, point, deltaY)).toBe(false);
+        }
+        expect(await worldTransform(page)).toBe(worldBefore);
+        // 再往后是滚轮一格一格的间隔（真实的 40~80ms），时钟交回真实时间。
+        await page.clock.resume();
 
         // 鼠标滚轮不是惯性：一格一格的间隔（50~120ms）填不满 160ms 的锁，但每一格都是新的一手。滚到边后的
         // 下一格就得交给墙，不必先停手——这正是「简介读完继续滚，墙接着走」的那一步。
@@ -281,5 +315,30 @@ test.describe('[bravais-only] wheel over the seam', () => {
         // 第一格容器自己滚（不拦），到底之后的两格都推墙。
         expect(notch).toEqual([false, true, true]);
         expect(await worldTransform(page)).not.toBe(worldBefore);
+
+        // 高分辨率滚轮（Magic Mouse、Windows「每次一行」）的一格只有 33px、增量恒定、间隔更密：它不是触控板，
+        // 滚到边之后照样一格一格地推墙。
+        // 先停手过 160ms：上一段最后两格在推墙，墙自己的手势锁这时还锁着，它会在 window 捕获阶段把这些事件
+        // 截走（指针停在缝里也一样到不了 relay，见 bravaisSeamWheel 文件头），那样第一格就不是信息条自己滚了。
+        await page.waitForTimeout(240);
+        const highRes = await page.evaluate(async point => {
+            const element = document.querySelector<HTMLElement>('[data-bravais-seam] .bravais-seam-row-info')!;
+            const prevented: boolean[] = [];
+            const send = () => {
+                const event = new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: 33, clientX: point.x, clientY: point.y });
+                element.dispatchEvent(event);
+                prevented.push(event.defaultPrevented);
+            };
+            const nextNotch = () => new Promise(resolve => setTimeout(resolve, 40));
+            element.scrollTop = 0;
+            send();
+            element.scrollTop = element.scrollHeight;
+            await nextNotch();
+            send();
+            await nextNotch();
+            send();
+            return prevented;
+        }, point);
+        expect(highRes).toEqual([false, true, true]);
     });
 });
