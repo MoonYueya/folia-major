@@ -184,10 +184,24 @@ const downloadArchive = async (destination, archiveName) => {
   }
 };
 
+// A CI step that opts into shell: bash puts the Git Bash GNU tar first on PATH, and that tar
+// misreads two Windows argument forms: "C:\..." is taken as the remote host "C", and a
+// backslash inside a path is read as an escape. So the archive reaches tar as a bare name
+// with the working directory set to the directory holding it, and the -C target is spelled
+// with forward slashes. bsdtar (the Windows default) accepts the same form.
+export const archiveExtractionPlan = (archive, destination) => ({
+  cwd: path.dirname(archive),
+  args: [
+    "-xzf",
+    path.basename(archive),
+    "-C",
+    destination.split(path.sep).join(path.posix.sep),
+  ],
+});
+
 const extractArchive = (archive, destination) => {
-  const result = spawnSync("tar", ["-xzf", archive, "-C", destination], {
-    stdio: "inherit",
-  });
+  const plan = archiveExtractionPlan(archive, destination);
+  const result = spawnSync("tar", plan.args, { stdio: "inherit", cwd: plan.cwd });
   if (result.error) throw result.error;
   if (result.status !== 0)
     throw new Error(`tar failed with exit code ${result.status}`);
