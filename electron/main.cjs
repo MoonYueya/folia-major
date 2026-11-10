@@ -6769,9 +6769,13 @@ ipcMain.handle('report-device-pixel-ratio', (event, ratio) => {
 });
 
 // The external playback route's spectrum: the renderer arms the machine's own sound around one
-// getDisplayMedia call and disarms it again (see setupDisplayMediaRequestHandler). Only a first-party
+// getDisplayMedia call and disarms it again (see setupDisplayMediaRequestHandler). Only the main
 // window may arm it, so no other page can talk the handler into starting a system capture.
-ipcMain.handle('external-spectrum-capture-arm', firstParty('external-spectrum-capture-arm', (_event, armed) => {
+ipcMain.handle('external-spectrum-capture-arm', (event, armed) => {
+  if (!isTrustedMainWindowContents(event.sender)) {
+    throw new Error('Untrusted renderer attempted to arm system-sound capture.');
+  }
+
   const next = armed === true;
   if (next === externalSpectrumArm.isArmed()) return true;
   if (next) {
@@ -6782,14 +6786,17 @@ ipcMain.handle('external-spectrum-capture-arm', firstParty('external-spectrum-ca
     console.log('[ExternalSpectrum] System-sound capture disarmed');
   }
   return true;
-}));
+});
 
 // The renderer reports the end of the capture it held (the route left the player, or the attempt
 // failed after the grant), so the window may be throttled again.
-ipcMain.handle('external-spectrum-capture-stopped', firstParty('external-spectrum-capture-stopped', () => {
+ipcMain.handle('external-spectrum-capture-stopped', (event) => {
+  if (!isTrustedMainWindowContents(event.sender)) {
+    throw new Error('Untrusted renderer reported the end of system-sound capture.');
+  }
   forgetExternalSpectrumCapture();
   return true;
-}));
+});
 
 ipcMain.handle('get-settings', firstParty('get-settings', () => {
   return getPublicSettings();
@@ -7824,7 +7831,10 @@ ipcMain.handle('global-shortcuts-backend', () => (
 // the renderer asks, which it does for as long as the player of that program keeps a media session of
 // its own (electron/mediaKeys.cjs says why, and who may ask).
 let externalMediaKeys = null;
-ipcMain.handle('external-media-keys-set', firstParty('external-media-keys-set', (_event, enabled) => {
+ipcMain.handle('external-media-keys-set', (event, enabled) => {
+  if (!isTrustedMainWindowContents(event.sender)) {
+    throw new Error('Untrusted renderer attempted to take the media keys.');
+  }
   externalMediaKeys ??= createMediaKeyTakeover({
     globalShortcut,
     onKey: (action) => {
@@ -7832,7 +7842,7 @@ ipcMain.handle('external-media-keys-set', firstParty('external-media-keys-set', 
     },
   });
   return externalMediaKeys.set(enabled === true);
-}));
+});
 
 ipcMain.handle('global-shortcuts-set', (event, accelerators) => {
   if (!isTrustedMainWindowContents(event.sender)) {
