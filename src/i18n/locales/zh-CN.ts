@@ -4500,6 +4500,7 @@ export default {
     "loopAll": "列表循环",
     "loopShuffle": "随机播放",
     "loopOne": "单曲循环",
+    "loopUnavailableInFm": "私人 FM 不支持循环模式",
     "unknownArtist": "未知歌手",
     "unknownAlbum": "未知专辑",
     "slotCustomizeHint": "右键或长按可更换",

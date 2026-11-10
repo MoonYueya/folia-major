@@ -398,7 +398,7 @@ const UnifiedPanel: React.FC<UnifiedPanelProps> = ({
                     onVolumePreview={onVolumePreview}
                     onVolumeChange={onVolumeChange}
                     onToggleMute={onToggleMute}
-                    loopToggleDisabled={playbackControlsDisabled}
+                    loopToggleDisabled={playbackControlsDisabled || isFmMode}
                     onClosePanel={onToggle}
                 />
             )}

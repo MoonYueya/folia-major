@@ -148,6 +148,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { clampMediaVolume, toSafeRemoteUrl } from './utils/appPlaybackHelpers';
 import { hasLoopedToStart } from './services/playedTrackCache';
 import { getOnlineProviderIdForSong, isLocalPlaybackSong, isNavidromePlaybackSong, isStagePlaybackSong } from './utils/appPlaybackGuards';
+import { queueLoopMode } from './utils/playbackNeighbors';
 import { writeLyricOffset } from './utils/lyrics/lyricOffsetMemory';
 import { FALLBACK_AI_DUAL_THEME } from './services/themeSanitizer';
 import { BASE_DUAL_THEME, DAYLIGHT_THEME, DEFAULT_THEME } from './services/baseThemes';
@@ -566,7 +567,10 @@ export default function App() {
     // control below keeps editing the per-song value alone.
     const effectiveLyricTimelineOffsetMs = lyricTimelineOffsetMs + globalLyricTimelineOffsetMs;
 
-    const effectiveLoopMode: StageLoopMode = loopMode;
+    // Personal FM neither wraps to the queue's head nor back to its tail (it fetches new tracks at the end), so
+    // inside FM the mode everything reads is 不循环 - the same rule the song-change handlers apply. Without it the
+    // loop button kept showing 「随机播放」 in FM while shuffle could not do anything there.
+    const effectiveLoopMode: StageLoopMode = queueLoopMode(loopMode, isFmMode);
 
     const getTargetPlaybackVolume = useCallback(() => (isMuted ? 0 : volume), [isMuted, volume]);
 
@@ -1468,6 +1472,10 @@ export default function App() {
 
     useStagePlayerSearchBridge();
 
+    // 遥控窗口的循环按钮和主窗口走同一个 toggle；FM 里循环模式不生效，这条也要把标志递进去，
+    // 否则遥控窗口还能把偏好改成 FM 里不生效的那个值。
+    const cycleLoopModeFromRemote = useCallback(() => handleToggleLoopMode(isFmMode), [handleToggleLoopMode, isFmMode]);
+
     const {
         publishStagePlayerPlaybackUpdate,
     } = useElectronPlaybackBridge({
@@ -1495,7 +1503,7 @@ export default function App() {
         lyricTimelineOffsetMs: effectiveLyricTimelineOffsetMs,
         onRemoteExportCommand: handleExportCommand,
         onExternalPlayRequest: handleStageExternalPlayRequest,
-        onRemoteCycleLoopMode: handleToggleLoopMode,
+        onRemoteCycleLoopMode: cycleLoopModeFromRemote,
         onRemoteTransitionSeek: seekDuringTransition,
         publishTrackTransition: automixEnabled,
         isTrackTransitionAudible: automix.isTransitionAudible,

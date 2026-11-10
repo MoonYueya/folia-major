@@ -4500,6 +4500,7 @@ export default {
     "loopAll": "Ulangi Semua",
     "loopShuffle": "Acak",
     "loopOne": "Ulangi Satu",
+    "loopUnavailableInFm": "FM pribadi tidak punya mode pengulangan",
     "unknownArtist": "Artis Tidak Dikenal",
     "unknownAlbum": "Album Tidak Dikenal",
     "slotCustomizeHint": "Klik kanan atau tekan lama untuk mengganti",

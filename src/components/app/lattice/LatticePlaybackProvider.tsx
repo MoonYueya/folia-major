@@ -66,6 +66,7 @@ export default function LatticePlaybackProvider({ actions, currentSong, queue, l
             shuffleRound });
         return {
             loopMode: actions.loopMode,
+            isFmMode: actions.playback.isFmMode,
             onToggleLoop: actions.playback.toggleLoop,
             onPrev: actions.playback.prev,
             onNext: actions.playback.next,

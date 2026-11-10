@@ -4500,6 +4500,7 @@ export default {
     "loopAll": "Loop all",
     "loopShuffle": "Shuffle",
     "loopOne": "Loop one",
+    "loopUnavailableInFm": "Personal FM has no loop mode",
     "unknownArtist": "Unknown Artist",
     "unknownAlbum": "Unknown Album",
     "slotCustomizeHint": "Right-click or long-press to change",

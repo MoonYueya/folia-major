@@ -4500,6 +4500,7 @@ export default {
     "loopAll": "Lặp danh sách",
     "loopShuffle": "Xáo trộn",
     "loopOne": "Lặp một bài",
+    "loopUnavailableInFm": "FM cá nhân không có chế độ lặp lại",
     "unknownArtist": "Nghệ sĩ không rõ",
     "unknownAlbum": "Album không rõ",
     "slotCustomizeHint": "Nhấp chuột phải hoặc nhấn giữ để thay đổi",
