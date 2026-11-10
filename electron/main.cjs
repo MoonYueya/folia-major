@@ -2926,11 +2926,11 @@ const displaySleepBlocker = createDisplaySleepBlocker(powerSaveBlocker);
 // own estimators whenever they answer null, which is what the web build always gets.
 // The developer debug module: the runtime log and the memory monitor, both switched from
 // Settings > Developer. Created BEFORE the analysis host, which logs through it.
-createDebugHost({ app, ipcMain, store, BrowserWindow });
+createDebugHost({ app, ipcMain, store, BrowserWindow, isTrustedSender: isFirstPartyWindowContents });
 logLinuxVulkanChoice(linuxVulkan, linuxGraphicsMode);
 
 const analysisHost = createAnalysisHost({
-  app, ipcMain, getModelsDir: getBundledModelsDirectory,
+  app, ipcMain, getModelsDir: getBundledModelsDirectory, isTrustedSender: isFirstPartyWindowContents,
 });
 
 function buildPlaybackSyncBridgeStatus() {
@@ -3677,6 +3677,47 @@ function isTrustedRemoteControlContents(webContents) {
     webContents &&
     webContents.id === remoteControlWindow.webContents.id
   );
+}
+
+// The first-party predicate: the two windows that run the app with the preload - the main window and
+// the remote-control window, which runs the same app and therefore the same online providers.
+// Comparing webContents identity rejects every other window; it cannot stop script already running
+// inside a trusted window - that is the CSP and preload layer's job, not this check's. A function
+// declaration so that handlers registered anywhere in this file can name it.
+function isFirstPartyWindowContents(event) {
+  return isTrustedMainWindowContents(event.sender) || isTrustedRemoteControlContents(event.sender);
+}
+
+// IPC 处理函数只给第一方窗口：别的来源直接拒（D605，登记在 dev/dedicatus/ipcChannels.mjs）。
+function firstParty(channel, handler) {
+  return createSenderGuardedHandler({ channel, isTrusted: isFirstPartyWindowContents, handler });
+}
+
+// 带 preload 的第一方窗口不开别的窗口，也不导航到应用以外的页面（D605 复核，2026-11-08）：window.open、
+// target="_blank"、中键点链接开出来的窗口会继承同一个 preload；窗口自己导航到外面的页面，那个页面同样带着
+// preload，还会被上面的判断当成第一方。外面的地址一律交给系统浏览器（openExternalUrl 只放行 http(s)）。
+function isolateFirstPartyWindow(win) {
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    void openExternalUrl(url);
+    return { action: 'deny' };
+  });
+  win.webContents.on('will-navigate', (event, url) => {
+    if (isSameAppPage(win.webContents.getURL(), url)) return;
+    event.preventDefault();
+    void openExternalUrl(url);
+  });
+}
+
+// 应用自己的页面：开发时同一个源（http://localhost:3000），打包后同一个 index.html（file:，查询参数可以不同）。
+function isSameAppPage(currentUrl, nextUrl) {
+  try {
+    const current = new URL(currentUrl);
+    const next = new URL(nextUrl);
+    if (current.protocol === 'file:') return next.protocol === 'file:' && next.pathname === current.pathname;
+    return next.origin === current.origin;
+  } catch {
+    return false;
+  }
 }
 
 function getMainWindowUrl() {
@@ -5696,6 +5737,7 @@ function createRemoteControlWindow() {
   });
 
   remoteControlWindow = win;
+  isolateFirstPartyWindow(win);
   remoteControlQueueExpansion = null;
   remoteControlPointerInside = false;
   remoteControlMouseIgnored = false;
@@ -6058,6 +6100,7 @@ function createWindow(options = {}) {
   }
 
   mainWindow = win;
+  isolateFirstPartyWindow(win);
   backgroundThrottling.attach(win);
   ensureTray();
   setMainWindowSkipTaskbarEnabled(mainWindowSkipTaskbarEnabled);
@@ -6708,9 +6751,9 @@ app.on('before-quit', (event) => {
 });
 
 // Settings Management IPC
-ipcMain.handle('window-set-native-theme', (event, themeSource) => {
+ipcMain.handle('window-set-native-theme', firstParty('window-set-native-theme', (event, themeSource) => {
   nativeTheme.themeSource = themeSource;
-});
+}));
 
 // Cache the main window's device pixel ratio so export window sizing can be
 // expressed in physical pixels (see resize-main-window / video-export-prepare-window).
@@ -6726,13 +6769,9 @@ ipcMain.handle('report-device-pixel-ratio', (event, ratio) => {
 });
 
 // The external playback route's spectrum: the renderer arms the machine's own sound around one
-// getDisplayMedia call and disarms it again (see setupDisplayMediaRequestHandler). Only the main
+// getDisplayMedia call and disarms it again (see setupDisplayMediaRequestHandler). Only a first-party
 // window may arm it, so no other page can talk the handler into starting a system capture.
-ipcMain.handle('external-spectrum-capture-arm', (event, armed) => {
-  if (!isTrustedMainWindowContents(event.sender)) {
-    throw new Error('Untrusted renderer attempted to arm system-sound capture.');
-  }
-
+ipcMain.handle('external-spectrum-capture-arm', firstParty('external-spectrum-capture-arm', (_event, armed) => {
   const next = armed === true;
   if (next === externalSpectrumArm.isArmed()) return true;
   if (next) {
@@ -6743,21 +6782,18 @@ ipcMain.handle('external-spectrum-capture-arm', (event, armed) => {
     console.log('[ExternalSpectrum] System-sound capture disarmed');
   }
   return true;
-});
+}));
 
 // The renderer reports the end of the capture it held (the route left the player, or the attempt
 // failed after the grant), so the window may be throttled again.
-ipcMain.handle('external-spectrum-capture-stopped', (event) => {
-  if (!isTrustedMainWindowContents(event.sender)) {
-    throw new Error('Untrusted renderer reported the end of system-sound capture.');
-  }
+ipcMain.handle('external-spectrum-capture-stopped', firstParty('external-spectrum-capture-stopped', () => {
   forgetExternalSpectrumCapture();
   return true;
-});
+}));
 
-ipcMain.handle('get-settings', () => {
+ipcMain.handle('get-settings', firstParty('get-settings', () => {
   return getPublicSettings();
-});
+}));
 
 // The GPU choice this run started with and the adapter Chromium took; null off Windows, where the
 // setting is not offered, or when the asking page is not the main window.
@@ -6814,15 +6850,15 @@ ipcMain.handle('playback-display-sleep-set-active', (event, active) => {
   return displaySleepBlocker.setActive(Boolean(active));
 });
 
-ipcMain.handle('set-app-locale', (event, localeKey) => {
+ipcMain.handle('set-app-locale', firstParty('set-app-locale', (event, localeKey) => {
   if (localeKey === 'zh-CN' || localeKey === 'zh-TW' || localeKey === 'en' || localeKey === 'in' || localeKey === 'vi') {
     store.set(APP_LOCALE_KEY, localeKey);
     refreshTrayMenu();
   }
   return localeKey;
-});
+}));
 
-ipcMain.handle('save-settings', (event, key, value) => {
+ipcMain.handle('save-settings', firstParty('save-settings', (event, key, value) => {
   // electron-store's set() also accepts an object of key/value pairs, which would bypass the
   // per-key guards below.
   if (typeof key !== 'string') {
@@ -7083,16 +7119,16 @@ ipcMain.handle('save-settings', (event, key, value) => {
   }
 
   return getPublicSettings();
-});
+}));
 
-ipcMain.handle('get-cache-directory', () => {
+ipcMain.handle('get-cache-directory', firstParty('get-cache-directory', () => {
   return {
     path: getConfiguredCacheDirectory(),
     isDefault: !store.has(CACHE_DIRECTORY_SETTING_KEY),
   };
-});
+}));
 
-ipcMain.handle('choose-cache-directory', async () => {
+ipcMain.handle('choose-cache-directory', firstParty('choose-cache-directory', async () => {
   if (!mainWindow || mainWindow.isDestroyed()) {
     return {
       canceled: true,
@@ -7123,15 +7159,15 @@ ipcMain.handle('choose-cache-directory', async () => {
     path: selectedPath,
     isDefault: false,
   };
-});
+}));
 
-ipcMain.handle('reset-cache-directory', () => {
+ipcMain.handle('reset-cache-directory', firstParty('reset-cache-directory', () => {
   store.delete(CACHE_DIRECTORY_SETTING_KEY);
   return {
     path: getConfiguredCacheDirectory(),
     isDefault: true,
   };
-});
+}));
 
 // What earlier versions downloaded, gone from this machine: up to 330MB nothing reads now. Once per
 // launch, off the startup path; a file that will not go (in use, read-only) is tried again next time.
@@ -7156,7 +7192,7 @@ const getLegacyModelsDirectory = () => {
   return ours.includes(dir) ? null : dir;
 };
 
-ipcMain.handle('legacy-models-check', async () => {
+ipcMain.handle('legacy-models-check', firstParty('legacy-models-check', async () => {
   const dir = getLegacyModelsDirectory();
   if (!dir) {
     store.delete(LEGACY_MODELS_DIRECTORY_SETTING_KEY);
@@ -7170,9 +7206,9 @@ ipcMain.handle('legacy-models-check', async () => {
     return null;
   }
   return { dir, count: paths.length, bytes };
-});
+}));
 
-ipcMain.handle('legacy-models-resolve', async (_event, action) => {
+ipcMain.handle('legacy-models-resolve', firstParty('legacy-models-resolve', async (_event, action) => {
   const dir = getLegacyModelsDirectory();
   if (action === 'delete' && dir) {
     try {
@@ -7186,38 +7222,38 @@ ipcMain.handle('legacy-models-resolve', async (_event, action) => {
   }
   store.delete(LEGACY_MODELS_DIRECTORY_SETTING_KEY);
   return { ok: true };
-});
+}));
 
-ipcMain.handle('legacy-models-open', async () => {
+ipcMain.handle('legacy-models-open', firstParty('legacy-models-open', async () => {
   const dir = getLegacyModelsDirectory();
   return dir ? (await shell.openPath(dir)) === '' : false;
-});
+}));
 
 ipcMain.handle('updates-get-status', () => {
   return getUpdateStatus();
 });
 
-ipcMain.handle('updates-check', () => {
+ipcMain.handle('updates-check', firstParty('updates-check', () => {
   return checkForUpdates({ manual: true });
-});
+}));
 
-ipcMain.handle('updates-mark-seen', (event, version) => {
+ipcMain.handle('updates-mark-seen', firstParty('updates-mark-seen', (event, version) => {
   return markUpdateSeen(version);
-});
+}));
 
-ipcMain.handle('updates-open-release-page', (event, version) => {
+ipcMain.handle('updates-open-release-page', firstParty('updates-open-release-page', (event, version) => {
   return openUpdateReleasePage(version);
-});
+}));
 
-ipcMain.handle('open-external-url', (event, url) => {
+ipcMain.handle('open-external-url', firstParty('open-external-url', (event, url) => {
   return openExternalUrl(url);
-});
+}));
 
-ipcMain.handle('updates-download', () => {
+ipcMain.handle('updates-download', firstParty('updates-download', () => {
   return downloadAvailableUpdate();
-});
+}));
 
-ipcMain.handle('updates-quit-and-install', () => {
+ipcMain.handle('updates-quit-and-install', firstParty('updates-quit-and-install', () => {
   const updater = ensureAutoUpdater();
   if (!isAutoUpdaterSupported() || !updater || updateState.status !== 'downloaded') {
     return false;
@@ -7232,26 +7268,26 @@ ipcMain.handle('updates-quit-and-install', () => {
 
   updater.quitAndInstall(false, true);
   return true;
-});
+}));
 
-ipcMain.handle('get-audio-cache', async (event, cacheKey) => {
+ipcMain.handle('get-audio-cache', firstParty('get-audio-cache', async (event, cacheKey) => {
   return readAudioCacheEntry(cacheKey);
-});
+}));
 
-ipcMain.handle('has-audio-cache', async (event, cacheKey) => {
+ipcMain.handle('has-audio-cache', firstParty('has-audio-cache', async (event, cacheKey) => {
   return hasAudioCacheEntry(cacheKey);
-});
+}));
 
-ipcMain.handle('save-audio-cache', async (event, cacheKey, data, mimeType, limitBytes) => {
+ipcMain.handle('save-audio-cache', firstParty('save-audio-cache', async (event, cacheKey, data, mimeType, limitBytes) => {
   await writeAudioCacheEntry(cacheKey, data, mimeType, limitBytes);
   return true;
-});
+}));
 
 // A copy playback found to be less than the song: deleted only while it is the file that was read.
-ipcMain.handle('remove-audio-cache', async (event, cacheKey, size) => {
+ipcMain.handle('remove-audio-cache', firstParty('remove-audio-cache', async (event, cacheKey, size) => {
   const { dataPath, metaPath } = getAudioCachePaths(cacheKey);
   return removeAudioCacheFileOfSize(dataPath, metaPath, size);
-});
+}));
 
 ipcMain.handle('get-audio-cache-usage', async () => {
   return getAudioCacheUsageBytes();
@@ -7261,58 +7297,58 @@ ipcMain.handle('get-audio-cache-stats', async () => {
   return getAudioCacheStats();
 });
 
-ipcMain.handle('clear-audio-cache', async () => {
+ipcMain.handle('clear-audio-cache', firstParty('clear-audio-cache', async () => {
   await clearAudioCacheDirectory();
   return true;
-});
+}));
 
-ipcMain.handle('transcode-fallback-request', async (_event, request) => {
+ipcMain.handle('transcode-fallback-request', firstParty('transcode-fallback-request', async (_event, request) => {
   return transcodeService.request(request);
-});
+}));
 
-ipcMain.handle('transcode-fallback-cancel', (_event, requestId) => {
+ipcMain.handle('transcode-fallback-cancel', firstParty('transcode-fallback-cancel', (_event, requestId) => {
   return transcodeService.cancel(requestId);
-});
+}));
 
-ipcMain.handle('get-cover-cache', async (event, cacheKey) => {
+ipcMain.handle('get-cover-cache', firstParty('get-cover-cache', async (event, cacheKey) => {
   return readCoverCacheEntry(cacheKey);
-});
+}));
 
-ipcMain.handle('save-cover-cache', async (event, cacheKey, data, mimeType) => {
+ipcMain.handle('save-cover-cache', firstParty('save-cover-cache', async (event, cacheKey, data, mimeType) => {
   await writeCoverCacheEntry(cacheKey, data, mimeType);
   return true;
-});
+}));
 
-ipcMain.handle('remove-cover-cache', async (event, cacheKey) => {
+ipcMain.handle('remove-cover-cache', firstParty('remove-cover-cache', async (event, cacheKey) => {
   await removeCoverCacheEntry(cacheKey);
   return true;
-});
+}));
 
 ipcMain.handle('get-cover-cache-usage', async () => {
   return getCoverCacheUsageBytes();
 });
 
-ipcMain.handle('clear-cover-cache', async () => {
+ipcMain.handle('clear-cover-cache', firstParty('clear-cover-cache', async () => {
   await clearCoverCacheDirectory();
   return true;
-});
+}));
 
-ipcMain.handle('has-local-cover-asset', async (_event, assetId) => {
+ipcMain.handle('has-local-cover-asset', firstParty('has-local-cover-asset', async (_event, assetId) => {
   return localCoverAssetStore.has(assetId);
-});
+}));
 
-ipcMain.handle('save-local-cover-asset', async (_event, assetId, data, mimeType) => {
+ipcMain.handle('save-local-cover-asset', firstParty('save-local-cover-asset', async (_event, assetId, data, mimeType) => {
   await localCoverAssetStore.write(assetId, data, mimeType);
   return true;
-});
+}));
 
-ipcMain.handle('remove-local-cover-asset', async (_event, assetId) => {
+ipcMain.handle('remove-local-cover-asset', firstParty('remove-local-cover-asset', async (_event, assetId) => {
   return localCoverAssetStore.remove(assetId);
-});
+}));
 
-ipcMain.handle('clear-local-cover-assets', async () => {
+ipcMain.handle('clear-local-cover-assets', firstParty('clear-local-cover-assets', async () => {
   return localCoverAssetStore.clear();
-});
+}));
 
 // 内嵌后端的端口、状态、重启、诊断快照与主动自检（electron/loginBackendIpc.cjs）。
 registerLoginBackendIpc({
@@ -7322,6 +7358,7 @@ registerLoginBackendIpc({
   getDefaultSession: () => session.defaultSession,
   neteaseBackend,
   qqBackend,
+  isTrustedSender: isFirstPartyWindowContents,
 });
 
 // Both channels reach the embedded KuGou API. `kugou-api-request` forwards the renderer's operation
@@ -7332,10 +7369,8 @@ registerLoginBackendIpc({
 //
 // Boundary, stated plainly: comparing webContents identity rejects other windows (a popup opened with
 // window.open carries the same preload). It cannot stop script already running inside a trusted
-// window - that is the CSP and preload layer's job, not this check's.
-const isFirstPartyWindowContents = (event) => (
-  isTrustedMainWindowContents(event.sender) || isTrustedRemoteControlContents(event.sender)
-);
+// window - that is the CSP and preload layer's job, not this check's. isFirstPartyWindowContents is
+// defined next to the other trust checks (after isTrustedRemoteControlContents).
 
 ipcMain.handle('kugou-api-status', createSenderGuardedHandler({
   channel: 'kugou-api-status',
@@ -7403,7 +7438,7 @@ ipcMain.handle('spotify-api-request', (event, operation, params) => {
   return spotifyApiBridge.request(operation, params);
 });
 
-ipcMain.handle('window-minimize', () => {
+ipcMain.handle('window-minimize', firstParty('window-minimize', () => {
   if (!mainWindow || mainWindow.isDestroyed()) {
     return false;
   }
@@ -7420,9 +7455,9 @@ ipcMain.handle('window-minimize', () => {
   mainWindow.minimize();
   refreshTrayMenu();
   return true;
-});
+}));
 
-ipcMain.handle('window-toggle-maximize', () => {
+ipcMain.handle('window-toggle-maximize', firstParty('window-toggle-maximize', () => {
   if (!mainWindow || mainWindow.isDestroyed()) {
     return false;
   }
@@ -7438,7 +7473,7 @@ ipcMain.handle('window-toggle-maximize', () => {
 
   mainWindow.maximize();
   return true;
-});
+}));
 
 ipcMain.handle('window-toggle-fullscreen', (event) => {
   if (!isTrustedMainWindowContents(event.sender) || !mainWindow || mainWindow.isDestroyed()) {
@@ -7455,7 +7490,7 @@ ipcMain.handle('window-toggle-fullscreen', (event) => {
   return nextFullscreen;
 });
 
-ipcMain.handle('window-close', () => {
+ipcMain.handle('window-close', firstParty('window-close', () => {
   if (!mainWindow || mainWindow.isDestroyed()) {
     return false;
   }
@@ -7473,7 +7508,7 @@ ipcMain.handle('window-close', () => {
 
   mainWindow.close();
   return true;
-});
+}));
 
 // Sleep timer and other explicit "exit the whole app" paths. Unlike window-close this
 // quits even when closing-to-tray is enabled, and runs the before-quit cleanup.
@@ -7706,21 +7741,21 @@ ipcMain.handle('voice-input-pause-get-status', (event) => {
   return voiceInputPauseMonitor.getStatus();
 });
 
-ipcMain.handle('stage-get-status', () => {
+ipcMain.handle('stage-get-status', firstParty('stage-get-status', () => {
   return stageApi.buildStageStatus();
-});
+}));
 
-ipcMain.handle('stage-set-enabled', async (_event, enabled) => {
+ipcMain.handle('stage-set-enabled', firstParty('stage-set-enabled', async (_event, enabled) => {
   return stageApi.setStageEnabled(enabled);
-});
+}));
 
-ipcMain.handle('stage-regenerate-token', async () => {
+ipcMain.handle('stage-regenerate-token', firstParty('stage-regenerate-token', async () => {
   return stageApi.regenerateStageToken();
-});
+}));
 
-ipcMain.handle('stage-clear-state', async () => {
+ipcMain.handle('stage-clear-state', firstParty('stage-clear-state', async () => {
   return stageApi.clearStageState();
-});
+}));
 
 ipcMain.handle('stage-complete-external-play', (event, result) => {
   if (!isTrustedMainWindowContents(event.sender)) {
@@ -7789,10 +7824,7 @@ ipcMain.handle('global-shortcuts-backend', () => (
 // the renderer asks, which it does for as long as the player of that program keeps a media session of
 // its own (electron/mediaKeys.cjs says why, and who may ask).
 let externalMediaKeys = null;
-ipcMain.handle('external-media-keys-set', (event, enabled) => {
-  if (!isTrustedMainWindowContents(event.sender)) {
-    throw new Error('Untrusted renderer attempted to take the media keys.');
-  }
+ipcMain.handle('external-media-keys-set', firstParty('external-media-keys-set', (_event, enabled) => {
   externalMediaKeys ??= createMediaKeyTakeover({
     globalShortcut,
     onKey: (action) => {
@@ -7800,7 +7832,7 @@ ipcMain.handle('external-media-keys-set', (event, enabled) => {
     },
   });
   return externalMediaKeys.set(enabled === true);
-});
+}));
 
 ipcMain.handle('global-shortcuts-set', (event, accelerators) => {
   if (!isTrustedMainWindowContents(event.sender)) {
@@ -8175,7 +8207,7 @@ ipcMain.handle('lyric-proxy-fetch', async (event, url, init) => {
 });
 
 // Integrate AI logic locally into Electron
-ipcMain.handle('generate-theme', async (event, lyricsText, options = {}) => {
+ipcMain.handle('generate-theme', firstParty('generate-theme', async (event, lyricsText, options = {}) => {
   try {
     const { isPureMusic = false, songTitle } = options;
     const provider = store.get('AI_PROVIDER') || 'gemini';
@@ -8236,7 +8268,7 @@ ipcMain.handle('generate-theme', async (event, lyricsText, options = {}) => {
     console.error(e);
     throw new Error(e instanceof Error ? e.message : String(e));
   }
-});
+}));
 
 registerAiModelDiscovery({ ipcMain, aiCredentials, store, isTrustedMainWindowContents, fetchWithOptionalSystemProxy });
 
@@ -8272,7 +8304,7 @@ ipcMain.handle('ai-test-connection', async (event, payload) => {
 // Word-segments the current song's lyric lines with whichever model the user configured. Shares
 // its prompt with the web handlers and with the client's copy-to-a-model-site path through
 // shared/lyricSegmentationPrompt.cjs, so all four routes ask for exactly the same thing.
-ipcMain.handle('segment-lyrics', async (event, lines) => {
+ipcMain.handle('segment-lyrics', firstParty('segment-lyrics', async (event, lines) => {
   // Held outside the try so the failure path can print what the model actually said. Without it a
   // rejected response gives the user a stack trace and nothing to act on.
   let rawResponse = null;
@@ -8321,4 +8353,4 @@ ipcMain.handle('segment-lyrics', async (event, lines) => {
     }
     throw new Error(message);
   }
-});
+}));
