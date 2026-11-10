@@ -9,16 +9,16 @@ import type { PonderSceneScript, PonderTargetDefinition } from '../../../../type
 // src/components/ponder/targets/player/queueShuffle.target.ts
 // 「随机播放在哪」。
 //
-// 别的播放器里随机是一个常驻模式，很多人会去循环按钮上找它 —— 连点几下循环按钮的人，
-// 多半就是在找随机（见 services/ponder/loopShuffleHint，那条提示送人进来的就是这里）。
-// Folia 只有「打乱队列」这一个一次性动作，所以先讲清楚它不是模式，再把四个入口各讲一章：
+// 别的播放器里随机是一个常驻模式，很多人会去循环按钮上找它。循环按钮上现在确实有那一档
+// （第四态「随机播放」），而这里讲的是另一个东西：Folia 的「打乱队列」是一次性把队列就地打乱，
+// 和那个常驻模式不是一件事。先把这一点讲清楚，再把四个入口各讲一章：
 // 命令、控制条按钮、队列面板上的按钮、命令窗口底部的固定命令。
 //
 // 每一章借用那一处本来的合成界面，锚点也沿用对应目标的那一组，不另画一份。
 
 const QUEUE_TAB_X = sidePanelTabCenterX('queue');
 
-/** 第一章：没有随机模式，只有打乱队列这一下。 */
+/** 第一章：循环按钮上的随机是常驻模式，打乱队列只洗一次牌，两者不是一回事。 */
 const noShuffleMode: PonderSceneScript = {
     id: 'queue-shuffle-no-mode',
     titleKey: 'ponder.scenes.queueShuffleNoMode',
@@ -159,7 +159,7 @@ export default {
     titleKey: 'ponder.targets.queueShuffle',
     category: 'playback',
     summaryKey: 'ponder.summaries.queue_shuffle',
-    // 没有一颗按钮叫「随机」可以悬停：入口是导航页、命令面板，和连点循环按钮时弹出的那条提示。
+    // 打乱队列没有一颗专属按钮可以悬停：四个入口分别是命令、控制条槽位、队列面板和固定命令，各讲一章。
     hoverSelector: null,
     relatedTargetIds: ['player-bar', 'panel-queue-tab', 'pinned-commands', 'command-palette'],
     scenes: [noShuffleMode, byCommand, bySlot, byQueuePanel, byPinnedCommand],

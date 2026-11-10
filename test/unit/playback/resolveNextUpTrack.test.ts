@@ -72,6 +72,23 @@ describe('resolveNextUpTrack', () => {
         expect(resolve({ song: queue[0], isFmMode: true })?.name).toBe('Bravo');
     });
 
+    // 随机模式的「下一首」是这一轮排列里的那一首，不是队列顺序里的那一首（按队列顺序报出来的是另一首）。
+    it('returns the shuffle order successor rather than the queue one', () => {
+        // 队列顺序里 Bravo 的下一首是 Charlie，排列说下一首是 Alpha。
+        expect(resolve({ song: queue[1] })?.name).toBe('Charlie');
+        expect(resolve({ song: queue[1], loopMode: 'shuffle', shuffleRound: { order: [2, 1, 0], history: [] } })?.name).toBe('Alpha');
+    });
+
+    // 走到排列末尾要重洗，那一刻是谁还不知道：宁可 null 也不猜。
+    it('returns null at the end of a shuffle round', () => {
+        expect(resolve({ song: queue[1], loopMode: 'shuffle', shuffleRound: { order: [0, 2, 1], history: [] } })).toBeNull();
+    });
+
+    // 排列里没有这一首（这一轮洗完之后队列又添了歌），推不出下一首：不能退回队列顺序里猜一个。
+    it('returns null when the current song is not in the shuffle order', () => {
+        expect(resolve({ song: queue[2], loopMode: 'shuffle', shuffleRound: { order: [0, 1], history: [] } })).toBeNull();
+    });
+
     it('only falls back to the queue head for an off-queue song when asked', () => {
         const outsider = song('zzz', 'Outsider');
         expect(resolve({ song: outsider })).toBeNull();
