@@ -254,10 +254,8 @@ const refreshPreparedQueue = () => {
     if (current.preparedQueueKey === key) return;
     current.preparedQueueKey = key;
     // Only repeat one asks for a take-back: every other call is the plain one, with no options to read.
-    const written = retract
-        ? omni.prepareExternalPlaybackQueue(current.song, next, { retract: true })
-        : omni.prepareExternalPlaybackQueue(current.song, next);
-    void written.catch(error => {
+    const preparation = omni.prepareExternalPlaybackQueue(current.song, next, retract ? { retract: true } : undefined);
+    void preparation.catch(error => {
         // A newer song dropped this queued preparation: nothing went wrong.
         if (session !== current) return;
         if (current.preparedQueueKey === key) current.preparedQueueKey = '';
