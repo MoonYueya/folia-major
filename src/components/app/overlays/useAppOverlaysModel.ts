@@ -51,6 +51,14 @@ export const useAppOverlaysModel = (deps: AppOverlaysDeps): AppOverlaysModel => 
     const audioSrc = usePlaybackStore(state => state.audioSrc);
     const playQueue = usePlaybackStore(state => state.playQueue);
     const isFmMode = usePlaybackStore(state => state.isFmMode);
+    // The shuffle round the model resolves neighbours from: subscribed, not read inside buildAppOverlaysModel,
+    // or the arrows would describe the round before this one for one frame.
+    const shuffleOrder = usePlaybackStore(state => state.shuffleOrder);
+    const shuffleHistory = usePlaybackStore(state => state.shuffleHistory);
+    const shuffleRound = useMemo(
+        () => ({ order: shuffleOrder ?? [], history: shuffleHistory }),
+        [shuffleOrder, shuffleHistory],
+    );
     const activePlaybackContext = usePlaybackStore(state => state.activePlaybackContext);
     // The held picture, not the live one: a blend keeps song, lyrics, duration and cover describing
     // the same track for its whole length. See the note on `coverUrl` above.
@@ -104,6 +112,7 @@ export const useAppOverlaysModel = (deps: AppOverlaysDeps): AppOverlaysModel => 
         isPlayerChromeHidden,
         playQueue,
         isFmMode,
+        shuffleRound,
         coverUrl: displayCoverUrl,
         stageTrackPillMode: cardPositioning ? 'always' : stageTrackPillMode,
         stageTrackPillOnScreen: deps.stageTrackPillOnScreen || (cardPositioning && currentView === 'player'),
@@ -139,6 +148,7 @@ export const useAppOverlaysModel = (deps: AppOverlaysDeps): AppOverlaysModel => 
         isPlayerChromeHidden,
         playQueue,
         isFmMode,
+        shuffleRound,
         displayCoverUrl,
         stageTrackPillMode,
         stageTrackPillTimeoutSec,

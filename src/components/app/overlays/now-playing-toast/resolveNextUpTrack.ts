@@ -1,5 +1,5 @@
-import { fmNextIsUnfetchedAt, nextQueueIndex, queueIndexOf } from '../../../../utils/playbackNeighbors';
-import type { SongResult } from '../../../../types';
+import { fmNextIsUnfetchedAt, nextQueueIndex, queueIndexOf, shuffleCurrentQueueIndex, type ShuffleOrderView } from '../../../../utils/playbackNeighbors';
+import type { SongResult, StageLoopMode } from '../../../../types';
 // src/components/app/overlays/now-playing-toast/resolveNextUpTrack.ts
 
 type ResolveNextUpTrackParams = {
@@ -9,11 +9,13 @@ type ResolveNextUpTrackParams = {
      * （即将淡出的），因为 currentSong 在 arm 时就已经异步推进过去了。
      */
     song: SongResult | null;
-    loopMode: 'off' | 'all' | 'one';
+    loopMode: StageLoopMode;
     isFmMode: boolean;
     isStageActive: boolean;
     /** 基准曲目不在队列里时是否退回队首，对齐 handleNextTrack 的下标规则 */
     fallbackToQueueHead?: boolean;
+    /** 这一轮随机的排列与历史（usePlaybackStore 里那一份）；拿不到时随机模式的下一首推不出来。 */
+    shuffleRound?: ShuffleOrderView | null;
 };
 
 /**
@@ -28,10 +30,19 @@ export const resolveNextUpTrack = ({
     isFmMode,
     isStageActive,
     fallbackToQueueHead = false,
+    shuffleRound,
 }: ResolveNextUpTrackParams): SongResult | null => {
     // 舞台播放不推进主队列，单曲循环原地重播，两种情况都没有「下一首」
     if (!song || playQueue.length === 0 || isStageActive || loopMode === 'one') {
         return null;
+    }
+
+    // 随机模式的下一首是这一轮排列里的，不是队列顺序里的（按队列顺序报出来的是另一首）。
+    // 走到这一轮末尾时要重洗，那一刻是谁还不知道，仍然返回 null —— 宁可 null 也不猜。
+    if (loopMode === 'shuffle' && !isFmMode) {
+        const order = shuffleRound?.order ?? [];
+        const position = order.indexOf(shuffleCurrentQueueIndex(playQueue, song, shuffleRound?.history ?? []));
+        return position >= 0 && position < order.length - 1 ? playQueue[order[position + 1]] ?? null : null;
     }
 
     const currentIndex = queueIndexOf(playQueue, song);

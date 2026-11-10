@@ -10627,11 +10627,6 @@
       "count": 3
     }
   },
-  "src/services/ponder/loopShuffleHint.ts": {
-    "dedicatus/restricted-apis": {
-      "count": 2
-    }
-  },
   "src/services/prefetchService.ts": {
     "@stylistic/indent": {
       "count": 7

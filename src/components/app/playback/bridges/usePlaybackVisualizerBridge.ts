@@ -3,7 +3,7 @@ import type { MutableRefObject } from 'react';
 import type { MotionValue } from 'framer-motion';
 import { findLatestActiveLineIndex } from '../../../../utils/appPlaybackHelpers';
 import { PlayerState } from '../../../../types';
-import type { AudioBands, LyricData, StageLyricsSession } from '../../../../types';
+import type { AudioBands, LyricData, StageLoopMode, StageLyricsSession } from '../../../../types';
 import { setCurrentLineIndex, setHandoffLineIndex, setPlayerState } from '../../../../stores/usePlaybackStore';
 import { selectDisplayLyrics, usePlaybackStore } from '../../../../stores/usePlaybackStore';
 import {
@@ -37,7 +37,7 @@ type UsePlaybackVisualizerBridgeParams = {
     audioRef: MutableRefObject<HTMLAudioElement | null>;
     analyserRef: MutableRefObject<AnalyserNode | null>;
     animationFrameRef: MutableRefObject<number>;
-    effectiveLoopMode: 'off' | 'all' | 'one';
+    effectiveLoopMode: StageLoopMode;
     isNowPlayingStageActive: boolean;
     isPlayerCapStageActive: boolean;
     stageActiveEntryKind: string | null;
@@ -348,7 +348,9 @@ export function usePlaybackVisualizerBridge({
             showLine(lyrics ? findLatestActiveLineIndex(lyrics.lines, effectiveLyricTime) : -1);
 
             if (hasReachedEnd) {
-                if (effectiveLoopMode === 'one' || effectiveLoopMode === 'all') {
+                // Shuffle never stops at the queue's end either, so it belongs with repeat-all here: the clock
+                // goes back to zero. Only 「不循环」 writes PAUSED, which is why this is !== 'off' and not a list.
+                if (effectiveLoopMode !== 'off') {
                     syncNowPlayingClock(0, duration, false);
                     currentTime.set(0);
                     if (lyrics) {
@@ -379,7 +381,7 @@ export function usePlaybackVisualizerBridge({
 
             if (hasReachedEnd) {
                 // An external player's clock is its own to restart: the loop mode does not replay it here.
-                if (!stageLyricsSession.clock && (effectiveLoopMode === 'one' || effectiveLoopMode === 'all')) {
+                if (!stageLyricsSession.clock && effectiveLoopMode !== 'off') {
                     syncStageLyricsClock(clock.startTimeSec, clock.endTimeSec, PlayerState.PLAYING, clock.startTimeSec);
                     currentTime.set(clock.startTimeSec);
                     showLine(lyrics ? findLatestActiveLineIndex(lyrics.lines, clock.startTimeSec) : -1);

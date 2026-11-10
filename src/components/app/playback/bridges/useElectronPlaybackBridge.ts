@@ -4,7 +4,7 @@ import type React from 'react';
 import type { RefObject } from 'react';
 import type { MotionValue } from 'framer-motion';
 import { PlayerState } from '../../../../types';
-import type { SongResult, LyricData } from '../../../../types';
+import type { SongResult, LyricData, StageLoopMode } from '../../../../types';
 import type {
     PlayerChromeVisibilityMode,
     RemoteControlCommand,
@@ -26,7 +26,7 @@ import { buildRemoteQueueItems, isRemoteQueueCommand } from './remoteQueueFeed';
 import { runTransportButtonAction } from './useTransportCommandRefs';
 import i18n from '../../../../i18n/config';
 import { useStableActionSurface } from '../../../../hooks/useStableCallbacks';
-import { selectDisplayCoverUrl, selectDisplayDuration, selectDisplayLyrics, selectDisplayPlayerState, selectDisplaySong, usePlaybackStore } from '../../../../stores/usePlaybackStore';
+import { readShuffleRound, selectDisplayCoverUrl, selectDisplayDuration, selectDisplayLyrics, selectDisplayPlayerState, selectDisplaySong, usePlaybackStore } from '../../../../stores/usePlaybackStore';
 import { useAppChromeStore } from '../../../../stores/useAppChromeStore';
 import { useThemeSettingsStore } from '../../../../stores/useThemeSettingsStore';
 import { usePlayerChromeSettingsStore } from '../../../../stores/usePlayerChromeSettingsStore';
@@ -62,7 +62,7 @@ type UseElectronPlaybackBridgeOptions = {
      * already does with the displayed track.
      */
     getDisplayAudioElement?: () => HTMLAudioElement | null;
-    effectiveLoopMode: 'off' | 'all' | 'one';
+    effectiveLoopMode: StageLoopMode;
     isNowPlayingStageActive: boolean;
     mediaSessionPlayRef: RefObject<() => Promise<void>>;
     mediaSessionPauseRef: RefObject<() => void>;
@@ -263,6 +263,7 @@ export const useElectronPlaybackBridge = ({
             : duration;
 
         return buildPlaybackSyncBridgeModel({
+            shuffleRound: readShuffleRound(),
             activePlaybackContext,
             currentSong,
             playQueue,

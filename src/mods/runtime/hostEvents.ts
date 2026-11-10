@@ -13,7 +13,7 @@ import { installBeforePlayHook, installLyricsTransformHook, installPlaybackFaile
 import { getPlaybackSongKey } from '@/utils/appPlaybackGuards';
 import { clampMediaVolume } from '@/utils/appPlaybackHelpers';
 import type { FoliumBeforePlayEvent, FoliumLyricsTransformEvent, FoliumPlaybackState, FoliumSong } from '../folium/contract';
-import { fromFoliumLines, resolveFoliumSongRef, toFoliumLines, toFoliumPlaybackFailureReason, toFoliumSong } from '../folium/dto';
+import { fromFoliumLines, resolveFoliumSongRef, toFoliumLines, toFoliumLoopMode, toFoliumPlaybackFailureReason, toFoliumSong } from '../folium/dto';
 import { dispatchFoliumHookAsync, dispatchFoliumHookSync, emitFoliumEvent, emitFoliumEventPerMod, hasFoliumEventHandlers } from '../folium/events';
 import { findFoliumQueueCurrentIndex, resolveFoliumQueueKind } from './hostQueue';
 import { takeFoliumQueueChange } from './queue/queueVersion';
@@ -178,7 +178,7 @@ export const installFoliumHostEvents = () => {
             emitFoliumEvent('playback.volumeChanged', { volume: clampMediaVolume(state.volume), muted: state.isMuted });
         }
         if (state.loopMode !== previous.loopMode) {
-            emitFoliumEvent('playback.loopModeChanged', { mode: state.loopMode });
+            emitFoliumEvent('playback.loopModeChanged', { mode: toFoliumLoopMode(state.loopMode) });
         }
     });
     useAppViewStore.subscribe((state, previous) => {

@@ -1,9 +1,9 @@
-import { PlayerState, type LyricData, type PlaybackContext, type SongResult, type StagePlayerSnapshot, type SubtitleContentMode } from '../types';
+import { PlayerState, type LyricData, type PlaybackContext, type SongResult, type StageLoopMode, type StagePlayerSnapshot, type SubtitleContentMode } from '../types';
 import type { PlayerChromeVisibilityMode, RemoteControlSnapshot, RemoteTrackTransition } from '../types/remoteControl';
 import type { VideoExportState } from '../types/videoExport';
 import { getPlaybackSongKey, isLocalPlaybackSong } from './appPlaybackGuards';
 import { buildStagePlayerSnapshot } from './stagePlayerSnapshot';
-import { queueIndexOf, resolvePlaybackNeighbors } from './playbackNeighbors';
+import { queueIndexOf, resolvePlaybackNeighbors, type ShuffleOrderView } from './playbackNeighbors';
 import { resolvePlaybackSongArtist, resolvePlaybackSongCoverUrl } from './playbackSongMeta';
 
 // src/utils/playbackSyncBridge.ts
@@ -23,7 +23,7 @@ export interface PlaybackSyncBridgeModel {
     durationSec: number;
     stageDurationSec: number;
     playerState: PlayerState;
-    loopMode: 'off' | 'all' | 'one';
+    loopMode: StageLoopMode;
     isFmMode: boolean;
     canGoPrevious: boolean;
     canGoNext: boolean;
@@ -40,6 +40,8 @@ export interface PlaybackSyncBridgeModel {
     mainWindowWidth: number;
     mainWindowHeight: number;
     lyricOffsetMs?: number;
+    /** 算出这个模型的邻居时用的那一轮随机（见 resolvePlaybackNeighbors）。 */
+    shuffleRound?: ShuffleOrderView | null;
     sampledAt: number;
 }
 
@@ -54,7 +56,7 @@ export interface BuildPlaybackSyncBridgeModelArgs {
     playerState: PlayerState;
     coverUrl: string | null;
     cachedCoverUrl?: string | null;
-    effectiveLoopMode: 'off' | 'all' | 'one';
+    effectiveLoopMode: StageLoopMode;
     isFmMode: boolean;
     isStageActive: boolean;
     controlsDisabled: boolean;
@@ -69,6 +71,8 @@ export interface BuildPlaybackSyncBridgeModelArgs {
     mainWindowWidth: number;
     mainWindowHeight: number;
     lyricOffsetMs?: number;
+    /** 这一轮随机的状态：上一首、下一首按这一轮的排列回答，而不是按队列顺序。 */
+    shuffleRound?: ShuffleOrderView | null;
     sampledAt?: number;
 }
 
@@ -130,6 +134,7 @@ export const buildPlaybackSyncBridgeModel = ({
     mainWindowWidth,
     mainWindowHeight,
     lyricOffsetMs,
+    shuffleRound = null,
     sampledAt = Date.now(),
 }: BuildPlaybackSyncBridgeModelArgs): PlaybackSyncBridgeModel => {
     const hasTrack = !isStageActive && Boolean(currentSong);
@@ -141,6 +146,7 @@ export const buildPlaybackSyncBridgeModel = ({
         loopMode: effectiveLoopMode,
         isFmMode,
         isStageActive,
+        shuffleRound,
     });
     const safeCurrentTimeSec = Math.max(0, clampFiniteNumber(currentTimeSec));
     const safeDurationSec = Math.max(0, clampFiniteNumber(durationSec));
@@ -176,6 +182,7 @@ export const buildPlaybackSyncBridgeModel = ({
         mainWindowWidth,
         mainWindowHeight,
         lyricOffsetMs,
+        shuffleRound,
         sampledAt,
     };
 };
@@ -192,6 +199,7 @@ export const buildRemoteControlSnapshotFromPlaybackSyncBridge = (
         isStageActive: model.isStageActive,
         // 遥控窗口要靠邻居的艺术家与封面预读下一首
         withMetadata: true,
+        shuffleRound: model.shuffleRound,
     });
 
     return {

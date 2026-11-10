@@ -18,7 +18,7 @@ import type { VisualizerTuningBundle } from '@/components/visualizer/tuningRegis
 import { useVisualizerTunings } from '@/components/visualizer/useVisualizerTunings';
 import { isModsBridgeAvailable, pushRuntimeSnapshot } from '../ipc';
 import type { FoliumPlaybackState } from '../folium/contract';
-import { toFoliumLines, toFoliumSong, toFoliumTheme } from '../folium/dto';
+import { toFoliumLines, toFoliumLoopMode, toFoliumSong, toFoliumTheme } from '../folium/dto';
 import { useFoliumParamStore } from '../params/paramStore';
 import { emitFoliumEvent } from '../folium/events';
 
@@ -178,7 +178,7 @@ export const useFoliumHostBridge = (theme: Theme, isDaylight: boolean) => {
                     visualizerMode: visualizerMode ?? null,
                     volume: clampMediaVolume(volume),
                     muted,
-                    loopMode,
+                    loopMode: toFoliumLoopMode(loopMode),
                 },
                 internal: {
                     lyricData: lyrics ?? null,

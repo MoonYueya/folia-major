@@ -1,3 +1,4 @@
+import type { StageLoopMode } from '@/types';
 import type { ModRuntimeInfo } from '../types';
 import { homeTabsRegistry, selectFoliumHomeTab } from './registries/homeTabs';
 import { invokeModNetFetch, invokeModPickFile, invokeModReleaseFile, invokeModRestoreFile } from '../ipc';
@@ -18,7 +19,7 @@ import type {
     FoliumSong,
     FoliumUiService,
 } from './contract';
-import { FOLIUM_SONG_REF_POOL_SIZE, FOLIUM_SONG_REF_PREFIX } from './dto';
+import { FOLIUM_SONG_REF_POOL_SIZE, FOLIUM_SONG_REF_PREFIX, toFoliumLoopMode } from './dto';
 import type { FoliumPermissionId } from './shared';
 import { FOLIUM_LYRICS_HELPERS } from './sharedHelpers';
 
@@ -52,7 +53,8 @@ export interface FoliumHostActions {
     /** Already clamped to 0–1 by the service. */
     setVolume: (volume: number) => void;
     setMuted: (muted: boolean) => void;
-    getLoopMode: () => FoliumLoopMode;
+    /** The host's own four-state loop; the service reports it as the Folium three. */
+    getLoopMode: () => StageLoopMode;
     setLoopMode: (mode: FoliumLoopMode) => void;
     /** `offset` is a whole number or undefined (centre on the displayed song); `limit` is 1–500. */
     getQueue: (offset: number | undefined, limit: number) => FoliumQueueSnapshot;
@@ -188,7 +190,7 @@ export const createFoliumPlaybackService = (mod: ModRuntimeInfo, context: Folium
             if (typeof muted !== 'boolean') throw new Error('playback.setMuted requires a boolean');
             control().setMuted(muted);
         },
-        getLoopMode: () => requireActions('playback', context).getLoopMode(),
+        getLoopMode: () => toFoliumLoopMode(requireActions('playback', context).getLoopMode()),
         setLoopMode: (mode: FoliumLoopMode) => {
             if (!LOOP_MODES.includes(mode)) throw new Error(`playback.setLoopMode: unknown mode "${String(mode)}"`);
             control().setLoopMode(mode);

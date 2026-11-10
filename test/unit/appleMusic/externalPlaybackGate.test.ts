@@ -39,6 +39,31 @@ describe('externalBlocksAutomix', () => {
         expect(gate({ playQueue: [song('a'), netease('n')], currentSong: netease('n') })).toBe(false);
     });
 
+    // 随机模式下 handleNextTrack 走的是这一轮的排列，不是队列顺序：按队列顺序判断会去挡一首
+    // 根本不会播的歌，或者放过一首真要接上的。
+    it('follows the shuffle order instead of the queue order while shuffling', () => {
+        const netease = (id: string): SongResult => ({ ...song(id), sourceRef: { kind: 'online', providerId: 'netease', mediaId: id } });
+        const queue = [netease('n'), song('a'), netease('m')];
+        // 队列顺序的下一首是 a（外部播放器）；这一轮排列说下一首是 m。
+        expect(gate({ playQueue: queue, currentSong: queue[0] })).toBe(true);
+        expect(gate({ playQueue: queue, currentSong: queue[0], loopMode: 'shuffle', shuffleRound: { order: [0, 2, 1], history: [] } })).toBe(false);
+        expect(gate({ playQueue: queue, currentSong: queue[0], loopMode: 'shuffle', shuffleRound: { order: [0, 1, 2], history: [] } })).toBe(true);
+    });
+
+    // 走到排列末尾要重洗，那一刻是谁还不知道：不挡，和 resolveTransitionTarget 一样如实说没有。
+    it('does not block at the end of a shuffle round', () => {
+        const netease = (id: string): SongResult => ({ ...song(id), sourceRef: { kind: 'online', providerId: 'netease', mediaId: id } });
+        const queue = [netease('n'), song('a')];
+        expect(gate({ playQueue: queue, currentSong: queue[0], loopMode: 'shuffle', shuffleRound: { order: [1, 0], history: [] } })).toBe(false);
+    });
+
+    // 私人 FM 不随机：队列由电台续上，仍按队列顺序算。
+    it('keeps the queue order in Personal FM', () => {
+        const netease = (id: string): SongResult => ({ ...song(id), sourceRef: { kind: 'online', providerId: 'netease', mediaId: id } });
+        const queue = [netease('n'), song('a'), netease('m')];
+        expect(gate({ playQueue: queue, currentSong: queue[0], loopMode: 'shuffle', isFmMode: true, shuffleRound: { order: [0, 2, 1], history: [] } })).toBe(true);
+    });
+
     it('wraps to the first song only with loop all, and never in Personal FM', () => {
         const queue = [song('a'), { ...song('n'), sourceRef: { kind: 'online' as const, providerId: 'netease', mediaId: 'n' } }];
         const currentSong = queue[1];

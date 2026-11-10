@@ -5,6 +5,7 @@ import type {
     LyricRuby,
     LyricSyllable,
     SongResult,
+    StageLoopMode,
     Theme,
     Word,
 } from '@/types';
@@ -16,6 +17,7 @@ import type { OnlineFailureCaseId } from '@/types/onlineMusic';
 import type {
     FoliumBackgroundVocal,
     FoliumLine,
+    FoliumLoopMode,
     FoliumLyricAlternateText,
     FoliumLyricSyllable,
     FoliumPlaybackFailureReason,
@@ -243,6 +245,12 @@ export const toFoliumPlaybackFailureReason = (reason: OnlineFailureCaseId | null
         ? FOLIUM_PLAYBACK_FAILURE_REASONS[reason]
         : 'unknown'
 );
+
+/**
+ * The repeat mode as mods see it, the host's four-state loop taken to the Folium three: shuffle repeats the
+ * queue in a shuffled order, so it is reported as `all`.
+ */
+export const toFoliumLoopMode = (mode: StageLoopMode): FoliumLoopMode => (mode === 'shuffle' ? 'all' : mode);
 
 /** Song DTO from the title/artist pair visualizers receive (no SongResult there). */
 export const toFoliumSongFromMeta = (

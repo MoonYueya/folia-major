@@ -19,7 +19,7 @@ import {
     type HifiTrack,
 } from '../../services/hifi/hifiPlayback';
 import { getPlaybackSongKey } from '../../utils/appPlaybackGuards';
-import { nextQueueIndex, queueIndexOf, queueLoopMode } from '../../utils/playbackNeighbors';
+import { nextQueueIndex, nextShuffleIndexWithinRound, queueIndexOf, queueLoopMode, shuffleCurrentQueueIndex, type ShuffleOrderView } from '../../utils/playbackNeighbors';
 import { loadQueuedSongHifiSource } from '../app/playback/source/songAudioSource';
 import { armQueueEndReplay, spendAdoptedPlayIntent, type HifiPlaySong } from './hifiRouteTransport';
 
@@ -44,6 +44,8 @@ export type HifiGaplessInput = {
     currentSong: SongResult | null;
     loopMode: StageLoopMode;
     isFmMode: boolean;
+    /** 这一轮随机的排列与历史（usePlaybackStore 里那一份）；没进随机时不给。 */
+    shuffleRound?: ShuffleOrderView | null;
 };
 
 /**
@@ -52,14 +54,19 @@ export type HifiGaplessInput = {
  * 的下标规则取，要走 HiFi，且不是同一首歌（只有一首的列表循环是重播，不是接播）。
  */
 export const hifiGaplessNextSong = (
-    { playbackRoute, current, loadState, engineTrackKey, engineStatus, playQueue, currentSong, loopMode, isFmMode }: HifiGaplessInput,
+    { playbackRoute, current, loadState, engineTrackKey, engineStatus, playQueue, currentSong, loopMode, isFmMode, shuffleRound }: HifiGaplessInput,
     routeFor: RouteFor = hifiRouteFor,
 ): SongResult | null => {
     if (playbackRoute !== 'hifi' || !current || current.promotedByGapless || loadState !== 'ready') return null;
     if (engineTrackKey !== current.trackKey || (engineStatus !== 'playing' && engineStatus !== 'paused')) return null;
     if (loopMode === 'one' && !isFmMode) return null;
     if (!currentSong || getPlaybackSongKey(currentSong) !== current.songKey) return null;
-    const nextIndex = nextQueueIndex(playQueue.length, queueIndexOf(playQueue, currentSong), queueLoopMode(loopMode, isFmMode));
+    // 随机模式的下一首是这一轮排列里的那一首（handleNextTrack 也照它切），不是队列顺序里的下一首 ——
+    // 按队列顺序接会无缝接到一首不会播的歌上。还没有排列、或者已经走到这一轮末尾（那时要重洗，
+    // 谁会是下一首还不知道）时这里是 null，这一首放完由 handler 切。
+    const nextIndex = loopMode === 'shuffle' && !isFmMode
+        ? nextShuffleIndexWithinRound(shuffleRound?.order ?? [], shuffleCurrentQueueIndex(playQueue, currentSong, shuffleRound?.history ?? []))
+        : nextQueueIndex(playQueue.length, queueIndexOf(playQueue, currentSong), queueLoopMode(loopMode, isFmMode));
     const next = nextIndex >= 0 ? playQueue[nextIndex] : null;
     if (!next) return null;
     const songKey = getPlaybackSongKey(next);
@@ -122,6 +129,9 @@ export function useHifiGaplessPreload({ handleNextTrack, playSong, loopMode, isF
     const playbackRoute = usePlaybackStore(state => state.playbackRoute);
     const playQueue = usePlaybackStore(state => state.playQueue);
     const currentSong = usePlaybackStore(state => state.currentSong);
+    // 这一轮随机的排列：它一变（重洗、队列改了重锚）预接的下一首就该跟着变，所以订阅它。
+    const shuffleOrder = usePlaybackStore(state => state.shuffleOrder);
+    const shuffleHistory = usePlaybackStore(state => state.shuffleHistory);
     const current = useHifiTrackStore(state => state.current);
     const loadState = useHifiTrackStore(state => state.loadState);
     const nextSongKey = useHifiTrackStore(state => state.next?.songKey ?? null);
@@ -138,12 +148,13 @@ export function useHifiGaplessPreload({ handleNextTrack, playSong, loopMode, isF
         latestRef.current = { handleNextTrack, playSong };
     });
 
+    const shuffleRound = useMemo(() => ({ order: shuffleOrder ?? [], history: shuffleHistory }), [shuffleOrder, shuffleHistory]);
     const desired = useMemo(() => hifiGaplessNextSong({
-        playbackRoute, current, loadState, engineTrackKey, engineStatus, playQueue, currentSong, loopMode, isFmMode,
+        playbackRoute, current, loadState, engineTrackKey, engineStatus, playQueue, currentSong, loopMode, isFmMode, shuffleRound,
     }),
     // enabled、navidrome、runtimeAvailable、circuitOpen 不在函数体里，是 hifiRouteFor 读的。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [circuitOpen, current, currentSong, enabled, engineStatus, engineTrackKey, isFmMode, loadState, loopMode, navidrome, playQueue, playbackRoute, runtimeAvailable]);
+    [circuitOpen, current, currentSong, enabled, engineStatus, engineTrackKey, isFmMode, loadState, loopMode, navidrome, playQueue, playbackRoute, runtimeAvailable, shuffleRound]);
     const desiredKey = desired ? getPlaybackSongKey(desired) : null;
     const desiredRef = useRef<SongResult | null>(desired);
     useEffect(() => {

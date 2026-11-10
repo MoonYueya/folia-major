@@ -43,6 +43,9 @@ import {
     queueIndexOf,
     queueLoopMode,
     resolvePlaybackNeighbors,
+    stepBackShuffleRound,
+    stepShuffleRound,
+    syncShuffleRound,
 } from '../../../../utils/playbackNeighbors';
 import { freshFmSongs } from '../../../../utils/fmQueue';
 import { applyQueueAddBehavior, queueForPlayingNow } from '../../../../utils/queueAddBehavior';
@@ -54,7 +57,7 @@ import { dispatchSearchTrackAction } from '../../search/searchTrackActions';
 import { playbackFade } from '../../../../services/playbackFade';
 import { getProviderSongMetadata } from '../../../../services/onlineMusic/songMetadata';
 import { setStatusMessage as setStatusMsg } from '../../../../stores/useStatusMessageStore';
-import { setAudioSrc, setCachedCoverUrl, setCurrentLineIndex, setCurrentSong, setDuration, setIsFmMode, setPlayQueue, setPlayerState, startLoadingToPlay, usePlaybackStore } from '../../../../stores/usePlaybackStore';
+import { readShuffleRound, setAudioSrc, setCachedCoverUrl, setCurrentLineIndex, setCurrentSong, setDuration, setIsFmMode, setPlayQueue, setPlayerState, setShuffleRound, startLoadingToPlay, usePlaybackStore } from '../../../../stores/usePlaybackStore';
 import { askedSongKeyRef, askForSong, keepSongsOfProvidersStanding, playsDroppedSoFar, providerDropsSoFar, providerPlaysDroppedSoFar, showSong, startOfAskedSong, startPlay, withdrawAsk } from '../currentSong';
 import { personalFmEndingsSoFar } from '../personalFmEndings';
 import { loadOnlineSongAudio } from '../source/songAudioSource';
@@ -408,10 +411,50 @@ export function usePlaybackQueueController({
         return [...queue];
     }, []);
 
-    const getNextPlayableQueueSong = useCallback((queue: SongResult[], song: SongResult, isFm: boolean) => {
-        const currentIndex = queueIndexOf(queue, song);
-        return nextPlayableQueueSong(queue, currentIndex, queueLoopMode(loopMode, isFm), isQueueSongPlayable);
+    // 失败跳过（「无法播放时自动跳过」那一串）走的是和切歌同一套下标规则：随机模式下顺着这一轮的排列往后找，
+    // 否则「这首不能播」会跳到自然顺序的下一首，和用户选的那一态不搭。
+    //
+    // 随机这一步和 handleNextTrack 走的是同一条路（stepShuffleRound），建出来的那一轮要写回 store：
+    // 只在这里算一个下标的话，播的下一首来自一份谁都没保存的排列，随后队列同步的 effect 会用另一个随机数
+    // 再洗一份，用户听到的排列和被记录的不是同一份，上一首/下一首就可能落回这一轮已经放过的歌。
+    // `commitShuffleRound` 区分两处调用：倒计时之前那次只是问「有没有下一首」，那次不写 ——
+    // 写了会在这一轮历史里留下一首没真放过的歌，之后「上一首」正好跳到那儿去。
+    const getNextPlayableQueueSong = useCallback((
+        queue: SongResult[],
+        song: SongResult,
+        isFm: boolean,
+        commitShuffleRound = false,
+    ) => {
+        const indexLoopMode = queueLoopMode(loopMode, isFm);
+        if (indexLoopMode === 'shuffle') {
+            const current = readShuffleRound();
+            const step = stepShuffleRound(current, queue, song, isQueueSongPlayable, Math.random);
+            if (commitShuffleRound && step.round !== current) setShuffleRound(step.round);
+            return step.index >= 0 ? queue[step.index] ?? null : null;
+        }
+        return nextPlayableQueueSong(queue, queueIndexOf(queue, song), indexLoopMode, isQueueSongPlayable);
     }, [loopMode]);
+
+    /**
+     * 随机这一轮的排列、签名和本轮历史都在 usePlaybackStore 里（shuffleOrder / shuffleSignature /
+     * shuffleHistory）：切歌的 handler 是唯一的写入方，automix、预取、HiFi 无缝、浮动播放条读同一份。
+     * 原来这份排列只在组件的 ref 里，那些消费者一个都拿不到它，只能各自静默退化（store 里那段注释写着是哪几处）。
+     * 洗牌与重洗都走 playbackNeighbors 的纯函数，这里只负责把它们接到 store 和切歌这两个动作上。
+     */
+    useEffect(() => {
+        if (loopMode === 'shuffle') return;
+        // 离开随机模式后这一轮就不作数了：再进来要重新洗一次，而不是接着上一轮的顺序放。
+        if (usePlaybackStore.getState().shuffleOrder !== null) setShuffleRound(null);
+    }, [loopMode]);
+
+    useEffect(() => {
+        if (loopMode !== 'shuffle') return;
+        // 队列改过（增删、拖动、命令式打乱、换歌单）：本轮剩余重洗，历史留着 —— 上一首要回得到的还是刚放过那首，
+        // 不是新排列的末位。队列没变时 syncShuffleRound 原样返回，这里也就不写 store（换歌不重洗）。
+        const current = readShuffleRound();
+        const synced = syncShuffleRound(current, playQueue, currentSong, Math.random);
+        if (synced !== current) setShuffleRound(synced);
+    }, [currentSong, loopMode, playQueue]);
 
     const buildQueueWithReplacementSong = useCallback((
         queue: SongResult[],
@@ -732,7 +775,8 @@ export function usePlaybackQueueController({
                     // so that edits made meanwhile are not undone.
                     const targetQueue = readClickTimeQueue() ?? newQueue;
                     if (onFmLanding && asFm() && playSongCallIdRef.current === playSongCallId) registerPersonalFmLanding(targetQueue, onFmLanding);
-                    void latestQueueActionsRef.current.playSong(getNextPlayableQueueSong(targetQueue, song, asFm()) ?? nextSong, targetQueue, asFm(), {
+                    // 这一次是真要跳：这一轮排列必须写回 store，被记录的就是被播放的那一份。
+                    void latestQueueActionsRef.current.playSong(getNextPlayableQueueSong(targetQueue, song, asFm(), true) ?? nextSong, targetQueue, asFm(), {
                         ...deferredPlayOptions,
                         unavailableSkipCount: skipCount + 1,
                     });
@@ -1396,6 +1440,33 @@ export function usePlaybackQueueController({
             return;
         }
 
+        // 随机模式：下一首是这一轮排列里的下一首；走到排列的最后一首就重洗一份，接着往下放。
+        // 私人 FM 进不来这里（queueLoopMode 把 FM 按不循环算），FM 的队列由电台续上。
+        if (indexLoopMode === 'shuffle') {
+            const current = readShuffleRound();
+            const step = stepShuffleRound(
+                current,
+                playQueue,
+                heldSong ?? options?.fromSong ?? currentSong,
+                isQueueSongPlayable,
+                Math.random,
+            );
+            // 排列、签名、历史一起写回：别的消费者读到的就是这一次切歌用的那一份。
+            // 什么都没变时（这一轮里一首能播的都没有）不写：zustand 写一次就通知整店的订阅者。
+            if (step.round !== current) setShuffleRound(step.round);
+            const shuffledIndex = step.index;
+            if (shuffledIndex >= 0) {
+                void playSong(playQueue[shuffledIndex], playQueue, false, {
+                    shouldNavigateToPlayer,
+                    unavailableSkipCount: options?.unavailableSkipCount,
+                    isAutomixAdvance: options?.isAutomixAdvance,
+                });
+            } else if (options?.allowStopOnMissing) {
+                stopAtQueueEnd();
+            }
+            return;
+        }
+
         const nextIndex = nextPlayableQueueIndex(playQueue, currentIndex, indexLoopMode, isQueueSongPlayable);
 
         if (nextIndex >= 0) {
@@ -1420,7 +1491,24 @@ export function usePlaybackQueueController({
         if (heldSong) endHeldTransition?.();
         const currentIndex = queueIndexOf(playQueue, heldSong ?? currentSong);
         // Nor does Personal FM jump back from its first track to the newest one at the queue's end.
-        const prevIndex = prevQueueIndex(playQueue.length, currentIndex, queueLoopMode(loopMode, isFmMode));
+        const indexLoopMode = queueLoopMode(loopMode, isFmMode);
+        // 随机模式：上一首从本轮历史里弹 —— 这一轮刚放过的那一首。不临时抽随机（那会跳到没听过的地方），
+        // 也不按排列位置回退（排列末位是这一轮还没放过的歌），队列在这中间被编辑过也一样回得到它。
+        // 本轮还没有更早的歌时什么都不做，和别的模式停在队首时一样。
+        if (indexLoopMode === 'shuffle') {
+            const current = readShuffleRound();
+            const step = stepBackShuffleRound(current, playQueue, heldSong ?? currentSong, Math.random);
+            // 本轮没有更早的歌时什么都不写：和别处一样，只在真变化时通知订阅者。
+            if (step.round !== current) setShuffleRound(step.round);
+            const previousIndex = step.index;
+            if (previousIndex >= 0) {
+                void playSong(playQueue[previousIndex], playQueue, false, {
+                    shouldNavigateToPlayer: shouldNavigateToPlayerOnTrackChange,
+                });
+            }
+            return;
+        }
+        const prevIndex = prevQueueIndex(playQueue.length, currentIndex, indexLoopMode);
 
         if (prevIndex >= 0) {
             void playSong(playQueue[prevIndex], playQueue, isFmMode, {
@@ -1518,6 +1606,7 @@ export function usePlaybackQueueController({
             loopMode,
             isFmMode,
             isStageActive: isNowPlayingStageActive,
+            shuffleRound: readShuffleRound(),
         });
         const audioElement = audioRef.current;
         const audioCurrentTimeSec = Number.isFinite(audioElement?.currentTime) ? audioElement?.currentTime ?? 0 : currentTime.get();

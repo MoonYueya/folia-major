@@ -1,20 +1,20 @@
 import React from 'react';
 import { Blend, Route, SlidersHorizontal } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { noteLoopButtonPress } from '../../../services/ponder/loopShuffleHint';
 import { useAutomixSettingsStore } from '../../../stores/useAutomixSettingsStore';
 import { useAudioSettingsStore } from '../../../stores/useAudioSettingsStore';
 import { openHifiSignalPath } from '../../hifi/hifiPanelStore';
 import { signalPathTone, verdictLabel } from '../../hifi/hifiSignalText';
 import { useHifiSignalPath } from '../../hifi/useHifiSignalPath';
 import { loopModeIcon, loopModeLabelName } from '../../shared/loopModeDisplay';
+import type { StageLoopMode } from '../../../types';
 import { QuickTile } from './QuickTile';
 
 // src/components/panelTab/controls/SoundTiles.tsx
 // 音量下面的三块：循环（名字就是当前状态）、智能过渡、音频效果器（打开效果器窗口，处理开着时亮起）。
 
 interface SoundTilesProps {
-    loopMode: 'off' | 'all' | 'one';
+    loopMode: StageLoopMode;
     /** Receives the click so the handler can stop it from reaching the panel container. */
     onToggleLoop: (event?: React.MouseEvent) => void;
     loopToggleDisabled: boolean;
@@ -39,10 +39,7 @@ const SoundTiles: React.FC<SoundTilesProps> = ({ loopMode, onToggleLoop, loopTog
                 label={t(`player.${loopModeLabelName(loopMode)}`)}
                 lit={loopMode !== 'off'}
                 disabled={loopToggleDisabled}
-                onClick={(event) => {
-                    onToggleLoop(event);
-                    noteLoopButtonPress();
-                }}
+                onClick={onToggleLoop}
             />
             {hifiSignalPath ? (
                 // QuickTile 不收 className：外面包一层占两列，grid 让里面那层撑满。

@@ -5,7 +5,7 @@ import type { LyricData, SongResult, StageLoopMode } from '../../types';
 import type { AudioQualityPreference } from '../../types/onlineMusic';
 import type { PlaybackRecoveryTarget } from '../../types/playbackRecovery';
 import { getPlaybackSongKey, isNavidromePlaybackSong, resolveNavidromePlaybackCarrier } from '../../utils/appPlaybackGuards';
-import { nextTransitionSong } from '../../utils/playbackNeighbors';
+import { nextTransitionSong, resolveTransitionTarget, type TransitionTargetReason } from '../../utils/playbackNeighbors';
 import { getPrefetchedData } from '../prefetchService';
 import { describeProfileState, getTrackProfile, recordPlayedTail } from './profileService';
 import { onPlayWrapped } from '../volumeBalance/balanceMeter';
@@ -22,7 +22,7 @@ import {
 import { AUTOMIX_MAX_OVERLAP_SEC, linesOnClipClock } from './transitionPlanner';
 import { omni } from '../onlineMusic/omni';
 import type { TransitionSettings } from './transitionStrategy';
-import { usePlaybackStore, type TransitionDisplay } from '../../stores/usePlaybackStore';
+import { readShuffleRound, usePlaybackStore, type TransitionDisplay } from '../../stores/usePlaybackStore';
 import { useAudioSettingsStore } from '../../stores/useAudioSettingsStore';
 import { playbackFade } from '../playbackFade';
 import { getPlaybackRepresentation } from '../playbackRecovery/representationRegistry';
@@ -64,6 +64,29 @@ export const isPausedByListener = (state: PlayerState): boolean => state === Pla
 export const shouldAbortTransitionOnPause = (state: PlayerState, pauseFadePending: boolean): boolean => (
     isPausedByListener(state) && !pauseFadePending
 );
+
+/**
+ * What the log says when a transition has no track to go into. The reasons are kept apart because they are
+ * different situations: a shuffle round with no order to read is not a queue that ended, and telling them
+ * apart is the whole point of the reason value.
+ */
+const describeNoTransition = (reason: TransitionTargetReason): string => {
+    switch (reason) {
+        case 'shuffle-order-unknown':
+            return 'shuffle is on but this round has no order to read, so there is nothing to blend into yet';
+        case 'shuffle-current-not-in-order':
+            return 'this shuffle round has an order, but the track playing is not in it';
+        case 'shuffle-round-end':
+            return 'this shuffle round is played out, the order is redrawn when the track changes';
+        case 'fm-next-unfetched':
+            return 'the next Personal FM track is fetched when this one ends, it cannot be measured before that';
+        case 'replay-current':
+            return 'the next track in the queue is this one again, that is a replay and not a transition';
+        case 'ok':
+        case 'queue-end':
+            return 'nothing queued after this track';
+    }
+};
 
 /** A position in a track as a log line wants it: `3:12.40 (192.40s)`. */
 const trackClock = (seconds: number): string => {
@@ -580,8 +603,13 @@ export function useAutomixDecks({
         // The queue's own rule for the track a transition goes into (playbackNeighbors). None on the
         // last Personal FM track: its successor is fetched when the track ends and cannot be named
         // or measured before that, so automix stays out of the way there.
-        const nextSong = nextTransitionSong(playQueue, currentSong, loopMode, isFmMode);
-        if (!nextSong) return report(`${audioSrc}:queue-end`, 'nothing queued after this track');
+        const transitionTarget = resolveTransitionTarget(playQueue, currentSong, loopMode, isFmMode, readShuffleRound());
+        const nextSong = transitionTarget.song;
+        if (!nextSong) {
+            // Say which of them it is. Under shuffle these used to all read as 「nothing queued after this track」,
+            // which was a lie the moment the order lived in a ref this side could not see.
+            return report(`${audioSrc}:${transitionTarget.reason}`, describeNoTransition(transitionTarget.reason));
+        }
 
         // Nothing below applies while a transition is already in flight - `requestTransition` returns null
         // on sight - and the write underneath it is not free. This function runs on every timeupdate, the
@@ -760,7 +788,7 @@ export function useAutomixDecks({
         if (!isEnabled || !currentSong || transition.mode !== 'automix') return;
         if (!canSeparateStems()) return;
 
-        const next = nextTransitionSong(playQueue, currentSong, loopMode, isFmMode);
+        const next = nextTransitionSong(playQueue, currentSong, loopMode, isFmMode, readShuffleRound());
         stemSongsRef.current = { from: currentSong, to: next };
         // The same pair, told to the cache: it decides what to throw away when it runs out of room,
         // and without this it can only go by age - which is how it came to evict the window a

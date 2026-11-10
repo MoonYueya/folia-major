@@ -1237,6 +1237,14 @@ export default function App() {
         setIsPanelOpen(true);
     }, []);
 
+    // 这一轮随机的排列：卡片报的下一首得是 handleNextTrack 真会切的那一首，所以它一变就重算。
+    const shuffleOrderForNextUp = usePlaybackStore(state => state.shuffleOrder);
+    const shuffleHistoryForNextUp = usePlaybackStore(state => state.shuffleHistory);
+    const shuffleRoundForNextUp = useMemo(
+        () => ({ order: shuffleOrderForNextUp ?? [], history: shuffleHistoryForNextUp }),
+        [shuffleOrderForNextUp, shuffleHistoryForNextUp],
+    );
+
     /**
      * The queue track a plain track-end would advance to, or null when nothing resolvable.
      * Mirrors handleNextTrack's index rules so the preview is always the track that will actually play.
@@ -1248,7 +1256,8 @@ export default function App() {
         isFmMode,
         isStageActive: isNowPlayingStageActive,
         fallbackToQueueHead: true,
-    }), [playQueue, currentSong, effectiveLoopMode, isFmMode, isNowPlayingStageActive]);
+        shuffleRound: shuffleRoundForNextUp,
+    }), [playQueue, currentSong, effectiveLoopMode, isFmMode, isNowPlayingStageActive, shuffleRoundForNextUp]);
 
     /**
      * The track a running blend is bringing in: the queue successor of the DISPLAYED song.
@@ -1264,7 +1273,8 @@ export default function App() {
         loopMode: effectiveLoopMode,
         isFmMode,
         isStageActive: isNowPlayingStageActive,
-    }) : null), [isShowingTail, displaySong, playQueue, effectiveLoopMode, isFmMode, isNowPlayingStageActive]);
+        shuffleRound: shuffleRoundForNextUp,
+    }) : null), [isShowingTail, displaySong, playQueue, effectiveLoopMode, isFmMode, isNowPlayingStageActive, shuffleRoundForNextUp]);
 
     /** True while the card previews the next track (plain track-end countdown, not the blend). */
     const [countdownActive, setCountdownActive] = useState(false);

@@ -68,6 +68,27 @@ describe('hifiBlocksAutomix', () => {
         expect(gate({ playQueue: [local('a'), online('b')], currentSong: local('a') })).toBe(true);
     });
 
+    // 随机模式的下一首在这一轮的排列里，不是队列顺序里的那一首（handleNextTrack 也照排列切）。
+    it('follows the shuffle order instead of the queue order while shuffling', () => {
+        const queue = [online('a'), local('b'), online('c')];
+        // 队列顺序的下一首是 b（本地，会走 HiFi）；这一轮排列说下一首是 c。
+        expect(gate({ playQueue: queue, currentSong: queue[0] })).toBe(true);
+        expect(gate({ playQueue: queue, currentSong: queue[0], loopMode: 'shuffle', shuffleRound: { order: [0, 2, 1], history: [] } })).toBe(false);
+        expect(gate({ playQueue: queue, currentSong: queue[0], loopMode: 'shuffle', shuffleRound: { order: [0, 1, 2], history: [] } })).toBe(true);
+    });
+
+    // 走到排列末尾要重洗，那一刻是谁还不知道：不挡。
+    it('does not block at the end of a shuffle round', () => {
+        const queue = [online('a'), local('b')];
+        expect(gate({ playQueue: queue, currentSong: queue[0], loopMode: 'shuffle', shuffleRound: { order: [1, 0], history: [] } })).toBe(false);
+    });
+
+    // 私人 FM 不随机：队列由电台续上，仍按队列顺序算。
+    it('keeps the queue order in Personal FM', () => {
+        const queue = [online('a'), local('b'), online('c')];
+        expect(gate({ playQueue: queue, currentSong: queue[0], loopMode: 'shuffle', isFmMode: true, shuffleRound: { order: [0, 2, 1], history: [] } })).toBe(true);
+    });
+
     it('wraps to the first song only with loop all, and never in Personal FM', () => {
         const queue = [local('a'), online('b')];
         expect(gate({ playQueue: queue, currentSong: queue[1], loopMode: 'off' })).toBe(false);

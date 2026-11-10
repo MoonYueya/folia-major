@@ -6,8 +6,8 @@ import type DevDebugOverlay from '../../DevDebugOverlay';
 import type MemoryMonitorWindow from '../../debug/MemoryMonitorWindow';
 import type NowPlayingToast from './NowPlayingToast';
 import { PlayerState } from '../../../types';
-import type { SongResult, UnifiedSong, LyricData } from '../../../types';
-import { resolvePlaybackNeighbors } from '../../../utils/playbackNeighbors';
+import type { SongResult, UnifiedSong, LyricData, StageLoopMode } from '../../../types';
+import { resolvePlaybackNeighbors, type ShuffleOrderView } from '../../../utils/playbackNeighbors';
 import { getPlaybackSongKey } from '../../../utils/appPlaybackGuards';
 import { getSongArtistLabel } from '../../../services/onlineMusic/songMetadata';
 import { setPlayerState } from '../../../stores/usePlaybackStore';
@@ -55,6 +55,8 @@ type AppOverlaysAmbient = {
     noTrackText: string;
     playQueue: SongResult[];
     isFmMode: boolean;
+    /** This round of shuffle, subscribed by the caller: the neighbours resolve from the order and its history. */
+    shuffleRound: ShuffleOrderView | null;
     prevTrackLabel: string;
     nextTrackLabel: string;
     /**
@@ -93,7 +95,7 @@ export type AppOverlaysDeps = {
     /** 本地曲库里有没有歌（搜索页据此列不列「本地」来源）。 */
     hasLocalSongs: boolean;
     devDebugSnapshot: any;
-    effectiveLoopMode: 'off' | 'all' | 'one';
+    effectiveLoopMode: StageLoopMode;
     canToggleCurrentPlayback: boolean;
     isNowPlayingControlDisabled: boolean;
     stageActiveEntryKind: string | null;
@@ -171,6 +173,7 @@ export const buildAppOverlaysModel = ({
     noTrackText,
     playQueue,
     isFmMode,
+    shuffleRound,
     isNowPlayingStageActive,
     handlePrevTrack,
     handleNextTrack,
@@ -319,12 +322,14 @@ export const buildAppOverlaysModel = ({
                     }
                     : null,
                 trackNavigation: ((): FloatingControlsProps['trackNavigation'] => {
+                    // 随机模式下浮动播放条的上一首/下一首也得是真会播的那两首，标题才不是空的。
                     const neighbors = resolvePlaybackNeighbors({
                         playQueue,
                         currentSong,
                         loopMode: effectiveLoopMode,
                         isFmMode,
                         isStageActive: isNowPlayingStageActive,
+                        shuffleRound,
                     });
 
                     return {
