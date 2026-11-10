@@ -17,6 +17,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'vite';
+import { traditionalLocalePlugin } from '../i18n/traditionalLocalePlugin.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const DOC_PATH = path.join(ROOT, 'docs', 'ponder-copy.md');
@@ -35,6 +36,9 @@ const server = await createServer({
     server: { middlewareMode: true, hmr: false, watch: null },
     optimizeDeps: { noDiscovery: true, include: [] },
     resolve: { alias: { '@': path.join(ROOT, 'src') } },
+    // 语文案要过 i18n/config.ts，那里导入虚拟模块 virtual:folia-locale-zh-TW（繁中由 zh-CN 转出来，
+    // 不签入仓库）。和 vite.config.ts 一样得注册这个插件，否则模块解析不到。
+    plugins: [traditionalLocalePlugin()],
 });
 
 const walk = dir => fs.readdirSync(dir, { withFileTypes: true }).flatMap(entry => (

@@ -39,6 +39,26 @@ describe('externalBlocksAutomix', () => {
         expect(gate({ playQueue: [song('a'), netease('n')], currentSong: netease('n') })).toBe(false);
     });
 
+    // In shuffle the next song is the one the round's order puts next, not the next one in queue
+    // order: judging by queue order arms a blend into an external song, or drops one it could have run.
+    it('judges the next song of the shuffle round, not the next one in queue order', () => {
+        const netease = (id: string): SongResult => ({ ...song(id), sourceRef: { kind: 'online', providerId: 'netease', mediaId: id } });
+        const queue = [netease('a'), netease('b'), song('c')];
+        // Queue order would have taken b (not external); the round takes c (external), so it blocks.
+        expect(gate({ playQueue: queue, currentSong: queue[0], loopMode: 'shuffle', shuffleRound: { order: [0, 2, 1], history: [] } })).toBe(true);
+        // Queue order would have taken c (external); the round takes a (not external), so it does not block.
+        expect(gate({ playQueue: queue, currentSong: queue[1], loopMode: 'shuffle', shuffleRound: { order: [1, 0, 2], history: [] } })).toBe(false);
+    });
+
+    it('treats the end of a shuffle round as having no next song, and keeps queue order in Personal FM', () => {
+        const netease = (id: string): SongResult => ({ ...song(id), sourceRef: { kind: 'online', providerId: 'netease', mediaId: id } });
+        const queue = [netease('a'), netease('b'), song('c')];
+        // Queue order would have taken c (external), but the round is at its end: the reshuffle decides, so there is no next song.
+        expect(gate({ playQueue: queue, currentSong: queue[1], loopMode: 'shuffle', shuffleRound: { order: [0, 2, 1], history: [] } })).toBe(false);
+        // Personal FM never follows the order.
+        expect(gate({ playQueue: queue, currentSong: queue[1], loopMode: 'shuffle', isFmMode: true })).toBe(true);
+    });
+
     it('wraps to the first song only with loop all, and never in Personal FM', () => {
         const queue = [song('a'), { ...song('n'), sourceRef: { kind: 'online' as const, providerId: 'netease', mediaId: 'n' } }];
         const currentSong = queue[1];
