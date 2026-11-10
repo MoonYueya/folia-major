@@ -4,7 +4,10 @@ import type { PlaybackRoute } from '../../../types/hifi';
 import { omni } from '../../../services/onlineMusic/omni';
 import { useAudioSettingsStore } from '../../../stores/useAudioSettingsStore';
 import { usePlaybackStore } from '../../../stores/usePlaybackStore';
-import { nextQueueIndex, queueIndexOf, queueLoopMode } from '../../../utils/playbackNeighbors';
+import {
+    nextQueueIndex, nextShuffleIndexWithinRound, queueIndexOf, queueLoopMode, shuffleCurrentQueueIndex,
+    type ShuffleOrderView,
+} from '../../../utils/playbackNeighbors';
 
 // src/components/app/playback/externalPlaybackGate.ts
 // Automix blends two of the app's own <audio> decks. A track that sounds in a provider's player
@@ -20,6 +23,8 @@ export type ExternalAutomixGateInput = {
     currentSong: SongResult | null;
     loopMode: StageLoopMode;
     isFmMode: boolean;
+    /** This round's shuffle order and history (the one in usePlaybackStore); absent when not shuffling. */
+    shuffleRound?: ShuffleOrderView | null;
 };
 
 /**
@@ -27,12 +32,16 @@ export type ExternalAutomixGateInput = {
  * one (the same index rules `handleNextTrack` follows, no wrap in Personal FM) is its song.
  */
 export const externalBlocksAutomix = (
-    { playbackRoute, playQueue, currentSong, loopMode, isFmMode }: ExternalAutomixGateInput,
+    { playbackRoute, playQueue, currentSong, loopMode, isFmMode, shuffleRound }: ExternalAutomixGateInput,
     isExternal: IsExternalSong = omni.canPlayExternally,
 ): boolean => {
     if (playbackRoute === 'external') return true;
     if (currentSong && isExternal(currentSong)) return true;
-    const nextIndex = nextQueueIndex(playQueue.length, queueIndexOf(playQueue, currentSong), queueLoopMode(loopMode, isFmMode));
+    // In shuffle the next song is the one this round's order puts next (the one `handleNextTrack`
+    // moves to), not the one after it in queue order.
+    const nextIndex = loopMode === 'shuffle' && !isFmMode
+        ? nextShuffleIndexWithinRound(shuffleRound?.order ?? [], shuffleCurrentQueueIndex(playQueue, currentSong, shuffleRound?.history ?? []))
+        : nextQueueIndex(playQueue.length, queueIndexOf(playQueue, currentSong), queueLoopMode(loopMode, isFmMode));
     return nextIndex >= 0 && isExternal(playQueue[nextIndex]);
 };
 
@@ -41,9 +50,13 @@ export function useExternalAutomixGate(): boolean {
     const playQueue = usePlaybackStore(state => state.playQueue);
     const currentSong = usePlaybackStore(state => state.currentSong);
     const isFmMode = usePlaybackStore(state => state.isFmMode);
+    // The round's order: when it changes (a reshuffle, a re-anchor after the queue changed) the next song can change with it.
+    const shuffleOrder = usePlaybackStore(state => state.shuffleOrder);
+    const shuffleHistory = usePlaybackStore(state => state.shuffleHistory);
     const loopMode = useAudioSettingsStore(state => state.loopMode);
+    const shuffleRound = useMemo(() => ({ order: shuffleOrder ?? [], history: shuffleHistory }), [shuffleOrder, shuffleHistory]);
     return useMemo(
-        () => externalBlocksAutomix({ playbackRoute, playQueue, currentSong, loopMode, isFmMode }),
-        [currentSong, isFmMode, loopMode, playQueue, playbackRoute],
+        () => externalBlocksAutomix({ playbackRoute, playQueue, currentSong, loopMode, isFmMode, shuffleRound }),
+        [currentSong, isFmMode, loopMode, playQueue, playbackRoute, shuffleRound],
     );
 }
