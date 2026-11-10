@@ -236,13 +236,13 @@ test.describe('[bravais-only] wheel over the seam', () => {
         expect(await worldTransform(page)).toBe(worldBefore);
 
         // 甩到底：同一手势里剩下的惯性事件留在信息条边上，不接着推墙（修好之前会「滚完简介接着推墙」）。
-        // 一次手势要在 160ms 的锁里跑完，所以整段（能滚的一下 + 甩到底 + 惯性尾巴）在页面里一次派发完，
-        // 不用 mouse.wheel 一来一回（那是几百毫秒，早就被当成新手势了）。
+        // 这一段按触控板的样子送（deltaY 12，系统惯性的峰值也在这个量级），整段在 160ms 的手势锁里一次派发完：
+        // 能滚的一下 + 甩到底 + 惯性尾巴，不用 mouse.wheel 一来一回（那是几百毫秒，早就被当成新手势了）。
         const tail = await page.evaluate(point => {
             const element = document.querySelector<HTMLElement>('[data-bravais-seam] .bravais-seam-row-info')!;
             const prevented: boolean[] = [];
             const send = () => {
-                const event = new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: 120, clientX: point.x, clientY: point.y });
+                const event = new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: 12, clientX: point.x, clientY: point.y });
                 element.dispatchEvent(event);
                 prevented.push(event.defaultPrevented);
             };
@@ -258,9 +258,28 @@ test.describe('[bravais-only] wheel over the seam', () => {
         expect(tail).toEqual([false, false, false, false]);
         expect(await worldTransform(page)).toBe(worldBefore);
 
-        // 停手超过锁定时间再看：这一手结束了，滚轮交回墙上。
-        await page.waitForTimeout(300);
-        await clearPoint(page, point);
-        await expectWallPansFrom(page, point, { firstStep: true });
+        // 鼠标滚轮不是惯性：一格一格的间隔（50~120ms）填不满 160ms 的锁，但每一格都是新的一手。滚到边后的
+        // 下一格就得交给墙，不必先停手——这正是「简介读完继续滚，墙接着走」的那一步。
+        const notch = await page.evaluate(async point => {
+            const element = document.querySelector<HTMLElement>('[data-bravais-seam] .bravais-seam-row-info')!;
+            const prevented: boolean[] = [];
+            const send = () => {
+                const event = new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: 120, clientX: point.x, clientY: point.y });
+                element.dispatchEvent(event);
+                prevented.push(event.defaultPrevented);
+            };
+            const nextNotch = () => new Promise(resolve => setTimeout(resolve, 80));
+            element.scrollTop = 0;
+            send();
+            element.scrollTop = element.scrollHeight;
+            await nextNotch();
+            send();
+            await nextNotch();
+            send();
+            return prevented;
+        }, point);
+        // 第一格容器自己滚（不拦），到底之后的两格都推墙。
+        expect(notch).toEqual([false, true, true]);
+        expect(await worldTransform(page)).not.toBe(worldBefore);
     });
 });

@@ -1,4 +1,4 @@
-import { wallWheelDelta } from '../../../components/wall/wallPanMotion';
+import { createWallWheelClassifier, wallWheelDelta } from '../../../components/wall/wallPanMotion';
 
 // src/library/suites/bravais/bravaisSeamWheel.ts
 // 缝（含折叠后那条边缘标签）里的滚轮接回墙：缝里能滚的容器先自己滚，其余交给墙的同一个 onWheel。
@@ -13,8 +13,10 @@ import { wallWheelDelta } from '../../../components/wall/wallPanMotion';
 // 1. 缝里真有一个能滚的祖先（展开后放不下的说明文字 .bravais-seam-blurb.is-open、挤满时的 .bravais-seam-row-info、
 //    横向溢出的首页窄缝导航段）且这一下还没到头 → 让它自己滚，不拦。
 // 2. 其余（含「已经滚到头」）→ 拦下来交给墙上同一个滚轮处理，相机接着走。
-// 同一个手势里由第 1 条吃下的容器继续吃（见 SEAM_WHEEL_LATCH_MS）：触控板甩到边界之后剩下的惯性事件
-// 不会一转手就变成推墙。
+// 触控板甩到边界之后剩下的惯性事件不会一转手就变成推墙：一个容器吃下一手后，同一手势里那些连续的小增量继续归它
+// （见 SEAM_WHEEL_LATCH_MS）。鼠标滚轮不这么算——一格一格的间隔（50~120ms）本来就填不满 160ms，一路续锁会让
+// 「滚到底再滚一格」永远等不到墙。所以锁内每一下先问墙的判别器（createWallWheelClassifier）：离散的一格是新的
+// 一手，解开锁重新判边界——简介没得滚了就交给墙，不必先停手。
 
 /** 墙的滚轮容器：落在这里面的 wheel 由 useWallPointerPan 自己那份监听处理，relay 不重复接。 */
 const WALL_FIELD_SELECTOR = '.lattice-field';
@@ -24,7 +26,7 @@ const SCROLL_REGION_SELECTOR = '[data-wheel-scroll-region]';
 const SCROLLABLE_OVERFLOW = new Set(['auto', 'scroll', 'overlay']);
 /** 到头 / 到顶的容差：分数滚动位置（缩放后的 DPR）留一点余地，免得最后一格被当成「还能滚」而吃掉。 */
 const EDGE_TOLERANCE_PX = 1;
-/** 一个手势的长度：某个容器吃过一次后，这么久没有新的 wheel 才解锁（和 useWallPointerPan 的 WHEEL_LATCH_MS 同值）。 */
+/** 触控板一次手势的尾巴：某个容器吃过一次后，这么久没有新的 wheel 才解锁（和 useWallPointerPan 的 WHEEL_LATCH_MS 同值）。 */
 const SEAM_WHEEL_LATCH_MS = 160;
 /** 光标真的挪开这么远也算换了目标，解锁。 */
 const LATCH_MOVE_PX = 4;
@@ -70,16 +72,24 @@ export const seamConsumesWheel = (target: EventTarget | null, root: HTMLElement,
 
 /**
  * 把缝里的滚轮接到墙上（forward 就是 useWallPointerPan 交给 .lattice-field 的那个 onWheel：
- * preventDefault、推相机、顺手接管手势锁定）。返回卸载函数。
+ * preventDefault、推相机、顺手接管手势锁定；viewportHeight 取墙量到的视口高度，按页滚的滚轮要用它换算）。
+ * 返回卸载函数。
  */
-export const attachSeamWheelRelay = (root: HTMLElement | null, forward: (event: WheelEvent) => void) => {
+export const attachSeamWheelRelay = (
+    root: HTMLElement | null,
+    forward: (event: WheelEvent) => void,
+    viewportHeight: () => number = () => window.innerHeight,
+) => {
     if (!root) return () => {};
     // 同一手势的锁：谁先吃下这一手就归谁，直到停手 SEAM_WHEEL_LATCH_MS 或光标挪开。锁定期间不碰布局。
     let latch: { timer: number; x: number; y: number } | null = null;
+    // 锁在，才需要判别事件是不是同一个手势；每次解锁都换一个，免得上一手的记忆漏进新手势。
+    let classify = createWallWheelClassifier();
     const releaseLatch = () => {
         if (!latch) return;
         window.clearTimeout(latch.timer);
         latch = null;
+        classify = createWallWheelClassifier();
         window.removeEventListener('pointermove', onLatchMove, true);
     };
     const onLatchMove = (event: globalThis.PointerEvent) => {
@@ -98,12 +108,17 @@ export const attachSeamWheelRelay = (root: HTMLElement | null, forward: (event: 
         if (event.target instanceof Element && event.target.closest(WALL_FIELD_SELECTOR)) return;
         // 缩放（Ctrl / ⌘ + 滚轮）与墙上一致：不拦、不推。
         if (event.ctrlKey || event.metaKey || event.defaultPrevented) return;
-        // 这一手还没结束：开头吃下它的容器继续归它，跳过边界计算（缝的宽度每帧都在被写）。
+        const { dx, dy } = wallWheelDelta(event, viewportHeight());
         if (latch) {
-            holdLatch(event);
-            return;
+            // 触控板甩到边界的惯性尾巴（同一手势里的小增量）：继续留在容器边上，不推墙。
+            // 离散的一格不算尾巴——它中间停过手，只是间隔仍在锁定时间内；当成新的一手重新判边界，
+            // 这样「简介滚到底再滚一格」这一格就交给墙，不必先停手 160ms。
+            if (classify(event) === 'trackpad') {
+                holdLatch(event);
+                return;
+            }
+            releaseLatch();
         }
-        const { dx, dy } = wallWheelDelta(event, window.innerHeight);
         if (seamConsumesWheel(event.target, root, dx, dy)) {
             holdLatch(event);
             return;

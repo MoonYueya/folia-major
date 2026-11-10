@@ -56,7 +56,7 @@ const stubScroll = (element: HTMLElement, axis: 'x' | 'y', { content, size, posi
 /** 墙上那个 onWheel 的替身：拦下默认行为（真身就是 useWallPointerPan 交给 .lattice-field 的处理）。 */
 const wallHandler = () => vi.fn((event: WheelEvent) => { event.preventDefault(); });
 
-const wheel = (target: Element, init: WheelEventInit = { deltaY: 120 }) => {
+const wheel = (target: Element, init: WheelEventInit = { deltaY: NOTCH_PX }) => {
     const event = new WheelEvent('wheel', { bubbles: true, cancelable: true, ...init });
     const notCancelled = target.dispatchEvent(event);
     return { event, defaultPrevented: !notCancelled };
@@ -73,6 +73,20 @@ const countStyleReads = (run: () => void) => {
 
 /** 手势锁的时长（SEAM_WHEEL_LATCH_MS = 160）之外。 */
 const afterLatch = () => new Promise(resolve => setTimeout(resolve, 240));
+
+/** 鼠标滚轮的一格（Chromium 约 100~120，不小于 minNotchPx 才算一格）。 */
+const NOTCH_PX = 120;
+/** 触控板的一发：单轴，但远小于一格（系统惯性峰值也在这里）。 */
+const GLIDE_PX = 12;
+/** 连续滚鼠标时相邻两格的间隔（真实是 50~120ms），一直在 160ms 的锁定时间内。 */
+const NOTCH_GAP_MS = 70;
+/** 触控板一发与下一发的间隔（约一帧），同一手势里不换来源。 */
+const GLIDE_GAP_MS = 16;
+
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+/** 触控板的一发：小增量，墙的判别器把它算作 trackpad。 */
+const glide = (target: Element, init: WheelEventInit = {}) => wheel(target, { deltaY: GLIDE_PX, ...init });
 
 const pointerMove = (x: number, y: number) => {
     window.dispatchEvent(new MouseEvent('pointermove', { bubbles: true, clientX: x, clientY: y }));
@@ -200,18 +214,19 @@ describe('缝里的滚轮接到墙上', () => {
         detach();
     });
 
-    it('惯性尾巴留在容器边上：吃到边界后同一手势里继续给的滚轮不推墙，停手超过锁定时间后才交给墙', async () => {
+    it('触控板甩到底：惯性尾巴留在容器边上，停手超过锁定时间后才交给墙', async () => {
         const { root, blurb } = buildSeam();
         stubScroll(blurb, 'y', { content: 420, size: 240, position: 0 });
         const forward = wallHandler();
         const detach = attachSeamWheelRelay(root, forward);
         // 第一下真的让说明文字自己滚。
-        expect(wheel(blurb).defaultPrevented).toBe(false);
+        expect(glide(blurb).defaultPrevented).toBe(false);
         expect(forward).not.toHaveBeenCalled();
         // 甩到底：后面这一手剩下的惯性事件还在同一手势里，不能接着推墙（原来会「滚完简介接着推墙」）。
         stubScroll(blurb, 'y', { content: 420, size: 240, position: 180 });
         for (let index = 0; index < 4; index += 1) {
-            const result = wheel(blurb);
+            await sleep(GLIDE_GAP_MS);
+            const result = glide(blurb);
             expect(result.defaultPrevented).toBe(false);
         }
         expect(forward).not.toHaveBeenCalled();
@@ -222,31 +237,66 @@ describe('缝里的滚轮接到墙上', () => {
         detach();
     });
 
+    it('鼠标滚轮滚到边后下一格就交给墙：一格一格的间隔（50~120ms）落在锁定时间内也不续命', async () => {
+        const { root, blurb } = buildSeam();
+        stubScroll(blurb, 'y', { content: 420, size: 240, position: 0 });
+        const forward = wallHandler();
+        const detach = attachSeamWheelRelay(root, forward);
+        // 第一格：说明文字自己滚，墙不动。
+        expect(wheel(blurb).defaultPrevented).toBe(false);
+        expect(forward).not.toHaveBeenCalled();
+        // 滚到底后继续滚：下一格离上一格只有一格滚轮的间隔，远不够解开锁，但它已经是新的一手——
+        // 说明文字没得可滚，就交给墙，不必先停手 160ms。
+        stubScroll(blurb, 'y', { content: 420, size: 240, position: 180 });
+        await sleep(NOTCH_GAP_MS);
+        const atEdge = wheel(blurb);
+        expect(atEdge.defaultPrevented).toBe(true);
+        expect(forward).toHaveBeenCalledTimes(1);
+        // 接着滚还是推墙：没在边界上重新锁住自己。
+        await sleep(NOTCH_GAP_MS);
+        expect(wheel(blurb).defaultPrevented).toBe(true);
+        expect(forward).toHaveBeenCalledTimes(2);
+        detach();
+    });
+
+    it('离散鼠标滚轮还在能滚的时候连着滚：一直是说明文字自己滚，不交替推墙', async () => {
+        const { root, blurb } = buildSeam();
+        stubScroll(blurb, 'y', { content: 420, size: 240, position: 0 });
+        const forward = wallHandler();
+        const detach = attachSeamWheelRelay(root, forward);
+        for (let index = 0; index < 4; index += 1) {
+            await sleep(NOTCH_GAP_MS);
+            expect(wheel(blurb).defaultPrevented).toBe(false);
+        }
+        expect(forward).not.toHaveBeenCalled();
+        detach();
+    });
+
     it('光标挪开超过 4px 也算换了目标：锁定解开，边界上的滚轮交给墙', () => {
         const { root, blurb } = buildSeam();
         stubScroll(blurb, 'y', { content: 420, size: 240, position: 0 });
         const forward = wallHandler();
         const detach = attachSeamWheelRelay(root, forward);
-        wheel(blurb);
+        glide(blurb);
         stubScroll(blurb, 'y', { content: 420, size: 240, position: 180 });
-        expect(wheel(blurb).defaultPrevented).toBe(false);
+        expect(glide(blurb).defaultPrevented).toBe(false);
         pointerMove(120, 120);
         expect(wheel(blurb).defaultPrevented).toBe(true);
         expect(forward).toHaveBeenCalledTimes(1);
         detach();
     });
 
-    it('锁定期间不再做布局读取（边界计算只在手势的第一下）', () => {
+    it('手势尾巴期间不再做布局读取（同一次手势的触控板事件不重新算边界）', () => {
         const { root, blurb } = buildSeam();
         stubScroll(blurb, 'y', { content: 420, size: 240, position: 0 });
         const forward = wallHandler();
         const detach = attachSeamWheelRelay(root, forward);
         const readStyle = vi.spyOn(window, 'getComputedStyle');
-        wheel(blurb);
+        glide(blurb);
         const afterFirst = readStyle.mock.calls.length;
         expect(afterFirst).toBeGreaterThan(0);
         stubScroll(blurb, 'y', { content: 420, size: 240, position: 180 });
-        for (let index = 0; index < 5; index += 1) wheel(blurb);
+        for (let index = 0; index < 5; index += 1) glide(blurb);
         expect(readStyle.mock.calls.length).toBe(afterFirst);
         readStyle.mockRestore();
         detach();
@@ -290,12 +340,12 @@ describe('缝里的滚轮接到墙上', () => {
         stubScroll(nav, 'x', { content: 600, size: 320, position: 0 });
         const forward = wallHandler();
         const detach = attachSeamWheelRelay(root, forward);
-        expect(wheel(navTab, { deltaX: 120, deltaY: 0 }).defaultPrevented).toBe(false);
+        expect(glide(navTab, { deltaX: GLIDE_PX, deltaY: 0 }).defaultPrevented).toBe(false);
         expect(forward).not.toHaveBeenCalled();
 
         stubScroll(nav, 'x', { content: 600, size: 320, position: 280 });
-        // 同一手势里惯性还没停：仍然留在容器边上。
-        expect(wheel(navTab, { deltaX: 120, deltaY: 0 }).defaultPrevented).toBe(false);
+        // 同一手势里触控板惯性还没停：仍然留在容器边上。
+        expect(glide(navTab, { deltaX: GLIDE_PX, deltaY: 0 }).defaultPrevented).toBe(false);
         expect(forward).not.toHaveBeenCalled();
         // 停手之后再滚，才交给墙。
         await afterLatch();

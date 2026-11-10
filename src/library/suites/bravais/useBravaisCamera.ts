@@ -230,7 +230,8 @@ export const useBravaisCamera = ({
     // 缝是 .lattice-field 的兄弟节点，滚轮进不了墙的监听（信息条、书脊、标题、说明文字都因此滚不动）：
     // 把缝里的滚轮接回墙上同一套。缝里真能滚的地方（展开的说明、挤满的信息条、横向溢出的首页窄缝）先自己滚，
     // 滚到头再交给墙；折叠 / 隐藏时缝收到 0 宽，唯一能停指针的边缘标签在缝之外，所以监听挂在 stage 的根节点。
-    useEffect(() => attachSeamWheelRelay(rootRef.current, pointer.forwardWheel), [pointer.forwardWheel, rootRef]);
+    // 视口高度按页滚（deltaMode = 2）的滚轮要用它换算，取墙量到的那个，不另外读 window。
+    useEffect(() => attachSeamWheelRelay(rootRef.current, pointer.forwardWheel, () => viewportRef.current.height), [pointer.forwardWheel, rootRef, viewportRef]);
 
     useEffect(() => () => {
         if (cullFrameRef.current !== null) cancelAnimationFrame(cullFrameRef.current);
