@@ -1154,10 +1154,17 @@ function createSpotifyOfficialClient({
     // when the DevTools port Folia opened it with still answers.
     let startedByUs = false;
 
+    // Whether Spotify's app is running, as `tasklist` answers it: 'running', 'stopped', or 'unknown'
+    // for a tool that failed or ran out of its two seconds and therefore said nothing. No match is
+    // not an error (measured: tasklist exits 0 and writes a line saying none matched), so an error
+    // is a question that went unanswered rather than a Spotify that is not there - the app may well
+    // be up, and a start made on top of it is the restart the listener has to agree to.
+    //
     // Both tools are bounded: a taskkill that hangs must not hold the quit.
     const spotifyIsRunning = (timeoutMs = TOOL_LIMIT_MS) => new Promise(resolve => {
         runFile(systemTool('tasklist.exe'), ['/FI', 'IMAGENAME eq Spotify.exe', '/NH'], { windowsHide: true, timeout: timeoutMs }, (error, stdout) => {
-            resolve(!error && /Spotify\.exe/i.test(String(stdout)));
+            if (error) { resolve('unknown'); return; }
+            resolve(/Spotify\.exe/i.test(String(stdout)) ? 'running' : 'stopped');
         });
     });
 
@@ -1238,32 +1245,62 @@ function createSpotifyOfficialClient({
     // Spotify running without the port be closed and started again, and only once in a run.
     // Spotify that is not running is only started, never closed. Anything else answers the media
     // session instead, so a status read never closes the app the listener opened.
+    //
+    // A `tasklist` that could not say whether Spotify runs leaves that question open, and a start
+    // made on top of an app that is already up is the same restart: the listener's own app is
+    // handed the new command line, which reopens it with the DevTools port. So a start that cannot
+    // rule out a running Spotify waits for the answer this app gives about closing theirs, and a
+    // listener who has not agreed is left with their Spotify as it is.
     async function start({ restart = false, allowRestart = false } = {}) {
         if (platform !== 'win32') throw spotifyError('unsupported', 'The Spotify app is steered on Windows only');
         const answers = !restart && await debugPortAnswers();
         // Whether this call started the Spotify it now waits for: only then is its window Folia's to tuck away.
         let spawned = false;
+        // Whether this start was made without knowing whether Spotify runs. The launcher hands its
+        // command line to an app that is already up (one instance per user), so such a start may have
+        // been the listener's app reopening rather than a Spotify this run created: the quit cannot
+        // treat it as one Folia started.
+        let startedOnUnseen = false;
         // The Spotify processes running before this start: a window of one of them is the listener's, and
         // stays where it is.
         let skipPids = [];
         if (!answers) {
             const launcher = findLauncher(env);
             if (!launcher) throw spotifyError('unavailable', 'The Spotify app is not installed', undefined, 'player-not-installed');
-            if (await spotifyIsRunning()) {
+            const running = await spotifyIsRunning();
+            // Not knowing is not the same as knowing it is closed: only 'stopped' is a Spotify that
+            // this call may start without touching one the listener already has open.
+            if (running !== 'stopped') {
                 if (!allowRestart) throw spotifyError('unavailable', 'Spotify runs without its DevTools port', 'this call may not restart it');
                 // Closing the app the listener has open is theirs to agree to, and the question is
                 // asked once (restartConsent.cjs): no answer means their Spotify stays as it is.
                 if (!restartConsented()) {
                     throw spotifyError('unavailable', 'Spotify runs without its DevTools port', 'the listener has not agreed to a restart', 'player-restart-consent');
                 }
-                if (forceRestarts >= MAX_FORCE_RESTARTS) {
-                    throw spotifyError('unavailable', 'Spotify runs without its DevTools port', `a restart already spent this run (${forceRestarts})`);
+                if (running === 'unknown') {
+                    // Nothing said Spotify was closed, so nothing here may close it: the start is made
+                    // on top of whatever is there. And a start made on top of it is the restart the
+                    // listener agreed to - the launcher of a one-instance app hands the command line to
+                    // the app that is already up, which reopens it with the DevTools port - so it is
+                    // only made at all after that yes above. Still nothing is closed: a taskkill cannot
+                    // go after a process that may not exist, and would spend the run's one restart on
+                    // it.
+                    //
+                    // What follows is not recorded as a Spotify this run started: whether the app that
+                    // answers is the listener's reopened or one this call created was never asked, and
+                    // the quit closes only what it can show was its own.
+                    startedOnUnseen = true;
+                    log('[SpotifyClient] tasklist could not say whether Spotify runs; it is started without closing it first');
+                } else {
+                    if (forceRestarts >= MAX_FORCE_RESTARTS) {
+                        throw spotifyError('unavailable', 'Spotify runs without its DevTools port', `a restart already spent this run (${forceRestarts})`);
+                    }
+                    forceRestarts += 1;
+                    log(restart ? '[SpotifyClient] Spotify is started again, as asked' : '[SpotifyClient] Spotify runs without the DevTools port; it is started again with it');
+                    page.close();
+                    await stopSpotify();
+                    await waitFor(1500);
                 }
-                forceRestarts += 1;
-                log(restart ? '[SpotifyClient] Spotify is started again, as asked' : '[SpotifyClient] Spotify runs without the DevTools port; it is started again with it');
-                page.close();
-                await stopSpotify();
-                await waitFor(1500);
             } else if (startedByUs) {
                 // The Spotify this run started is not running any more: the listener closed it, so the one
                 // started below is a new one, and the quit must not close a Spotify it did not start.
@@ -1295,7 +1332,10 @@ function createSpotifyOfficialClient({
             spawned = true;
             child.on?.('error', error => warn('[SpotifyClient] Spotify could not be started', error));
             child.unref?.();
-            startedByUs = true;
+            // A start made without knowing whether Spotify runs proves nothing about who created the
+            // app that answers, so it is not what makes the app one of this run's; a start that was
+            // already this run's stays so.
+            if (!startedOnUnseen) startedByUs = true;
             log('[SpotifyClient] Spotify was started with the DevTools port');
         }
         // The first wait: the app, its DevTools port and a page that answers a script.
@@ -1448,7 +1488,9 @@ function createSpotifyOfficialClient({
             // probing before it may take.
             const issueBy = Date.now() + QUIT_CLOSE_BUDGET_MS - QUIT_TASK_ISSUE_RESERVE_MS;
             // A Spotify this run started and the listener closed meanwhile is not Folia's to close.
-            if (startedByUs && !(await spotifyIsRunning(waitLimit(TOOL_LIMIT_MS, issueBy)))) startedByUs = false;
+            // Only a tasklist that answered says so: a question that went unanswered leaves the app
+            // Folia started to be closed by it, which is what the listener asked the quit to do.
+            if (startedByUs && await spotifyIsRunning(waitLimit(TOOL_LIMIT_MS, issueBy)) === 'stopped') startedByUs = false;
             if (!startedByUs) {
                 const port = await findPort({ again: true, deadline: issueBy });
                 if (!(await spotifyAnswersOnPort(port, waitLimit(PORT_VERIFY_LIMIT_MS, issueBy)))) return false;

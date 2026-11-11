@@ -202,12 +202,18 @@ type ClientOptions = {
     netstat?: string;
     /** Whether the listener already agreed to a restart. Default true: most tests are about the restart. */
     consented?: boolean;
+    /** `tasklist` fails or hangs, as Windows' own tool does when it is busy: nothing says whether Spotify runs. */
+    tasklistFails?: boolean;
 };
 
 const makeClient = (options: ClientOptions = {}) => {
     const { spawnProcess, spawned, procs } = makeSpawn();
     const runFile = vi.fn((file: string, _args: string[], _options: object, callback: (error: Error | null, stdout?: string) => void) => {
         if (String(file).includes('tasklist')) {
+            if (options.tasklistFails) {
+                callback(new Error('tasklist.exe timed out'), '');
+                return;
+            }
             callback(null, options.running === false ? 'INFO: No tasks are running' : '"Spotify.exe","1234","Console","1","120,000 K"');
             return;
         }
@@ -683,6 +689,29 @@ describe('what a call may do to Spotify', () => {
         handle = () => ({ details: 'Error: player-unavailable' });
         await expect(app.client.play({ id: TRACK, startMs: 0 })).rejects.toMatchObject({ code: 'unavailable' });
         expect(app.taskkills()).toBe(1);
+        expect(app.spotifySpawns()).toBe(1);
+        await app.client.close();
+    });
+
+    it('does not start Spotify on top of one that may be running when the restart was never agreed to', async () => {
+        FakeSocket.failuresLeft = FAILED_CONNECTIONS;
+        // tasklist failed or ran out of its two seconds: nothing on this computer says whether Spotify
+        // is up. The app the listener opened is theirs, so a start that may land on top of it is the
+        // same question a restart is.
+        const app = makeClient({ tasklistFails: true, portAnswers: false, appDirectory: makeLauncherDirectory(), consented: false });
+        await expect(app.client.play({ id: TRACK, startMs: 0 })).rejects.toMatchObject({
+            code: 'unavailable', reason: 'player-restart-consent',
+        });
+        expect(app.taskkills()).toBe(0);
+        expect(app.spotifySpawns()).toBe(0);
+        await app.client.close();
+    });
+
+    it('starts Spotify when tasklist cannot say whether it runs and the listener already agreed', async () => {
+        FakeSocket.failuresLeft = FAILED_CONNECTIONS;
+        const app = makeClient({ tasklistFails: true, portAnswers: false, appDirectory: makeLauncherDirectory(), consented: true });
+        await expect(app.client.play({ id: TRACK, startMs: 0 })).resolves.toBe('loaded');
+        expect(app.taskkills()).toBe(0);
         expect(app.spotifySpawns()).toBe(1);
         await app.client.close();
     });
@@ -1172,6 +1201,24 @@ describe('the quit, the helper and the port', () => {
         app.fetch.mockImplementation((async () => ({ ok: false, json: async () => ({}) })) as never);
         await expect(app.client.closeForQuit()).resolves.toBe(true);
         expect(app.taskkills()).toBe(2);
+    });
+
+    it('does not take a start made on top of an unseen Spotify for one of its own', async () => {
+        // tasklist says nothing about whether Spotify runs, and the listener agreed to a restart: the
+        // start is made on top of whatever is there, which is the launcher handing the command line to
+        // an app that may already be up. Nothing there proves this run started it, so the quit must not
+        // close it as the app this run started.
+        FakeSocket.failuresLeft = FAILED_CONNECTIONS;
+        const app = makeClient({ tasklistFails: true, portAnswers: false, appDirectory: makeLauncherDirectory(), consented: true });
+        await expect(app.client.play({ id: TRACK, startMs: 0 })).resolves.toBe('loaded');
+        expect(app.taskkills()).toBe(0);
+        expect(app.spotifySpawns()).toBe(1);
+
+        // The DevTools port answers for nobody at the quit either: with nothing saying Folia started
+        // that Spotify, there is nothing to close.
+        app.fetch.mockImplementation((async () => ({ ok: false, json: async () => ({}) })) as never);
+        await expect(app.client.closeForQuit()).resolves.toBe(false);
+        expect(app.taskkills()).toBe(0);
     });
 
     it('does not close a Spotify this run started and the listener closed meanwhile', async () => {

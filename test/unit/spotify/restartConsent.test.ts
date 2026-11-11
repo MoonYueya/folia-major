@@ -137,6 +137,42 @@ describe('the channel that carries the agreement', () => {
         }
     });
 
+    it('answers what is really kept after taking a yes back, not what was asked for', () => {
+        const { SETTING_KEY } = consentModule();
+        // A store that could not clear the key still holds the yes: the answer says so, so the switch
+        // that is drawn from it shows the agreement that is still in force rather than a no that never
+        // reached the store.
+        const stuck = memoryStore({ [SETTING_KEY]: true });
+        stuck.delete = () => {};
+        expect(registered(true, stuck)({ sender: 'main' }, false)).toBe(true);
+        expect(consentModule().read(stuck)).toBe(true);
+
+        // The ordinary case is the no it always was.
+        expect(registered(true, memoryStore({ [SETTING_KEY]: true }))({ sender: 'main' }, false)).toBe(false);
+    });
+
+    it('answers what is really kept after a yes, not what was asked for', () => {
+        const { SETTING_KEY } = consentModule();
+        // A write that never reached the store: the answer is the no that is still there, so the switch
+        // does not show an agreement Folia would not honour on the next player it has to reopen.
+        const unwritten = memoryStore();
+        unwritten.set = () => {};
+        expect(registered(true, unwritten)({ sender: 'main' }, true)).toBe(false);
+        expect(consentModule().read(unwritten)).toBe(false);
+
+        // A write that threw is the same answer: nothing was kept.
+        const threw = memoryStore();
+        threw.set = () => { throw new Error('the store could not be written'); };
+        expect(registered(true, threw)({ sender: 'main' }, true)).toBe(false);
+        expect(consentModule().read(threw)).toBe(false);
+
+        // The ordinary case is the yes it always was, and the module's own grant answers it too.
+        const kept = memoryStore();
+        expect(registered(true, kept)({ sender: 'main' }, true)).toBe(true);
+        expect(kept.values.get(SETTING_KEY)).toBe(true);
+        expect(consentModule().grant(memoryStore())).toBe(true);
+    });
+
     it('refuses a window that is not the main one, before it reads or writes anything', () => {
         const store = memoryStore();
         const handle = registered(false, store);
