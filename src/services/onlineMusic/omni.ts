@@ -1172,8 +1172,9 @@ export const omni = {
     },
 
     // What the provider of `song` declared about how its external player plays: a real spectrum, a
-    // start without a wait, spaced-out status polls, keys held while the song sounds. A song whose
-    // provider has no external player, or a declaration it left out, answers false everywhere.
+    // start without a wait, spaced-out status polls, keys held while the song sounds, a player whose
+    // own window the listener keeps using. A song whose provider has no external player, or a
+    // declaration it left out, answers false everywhere.
     externalPlaybackTraits(song: SongResult): ExternalPlaybackTraits {
         const external = getOnlineMusicProviderForSong(song)?.externalPlayback;
         return {
@@ -1181,6 +1182,7 @@ export const omni = {
             startsWithoutWaiting: external?.startsWithoutWaiting === true,
             backsOffStatusPolls: external?.backsOffStatusPolls === true,
             holdsMediaKeysWhilePlaying: external?.holdsMediaKeysWhilePlaying === true,
+            followsPlayerChanges: external?.followsPlayerChanges === true,
         };
     },
 
