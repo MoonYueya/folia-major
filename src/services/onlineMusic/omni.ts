@@ -8,6 +8,7 @@ import type {
     DailyStyleSongs,
     ExternalPlaybackStartOptions,
     ExternalPlaybackTraits,
+    ExternalTrackRepeatAnswer,
     LoginStep,
     MediaId,
     OmniAudioSource,
@@ -1184,7 +1185,21 @@ export const omni = {
             holdsMediaKeysWhilePlaying: external?.holdsMediaKeysWhilePlaying === true,
             seekLimitMs: typeof external?.seekLimitMs === 'number' && Number.isFinite(external.seekLimitMs) && external.seekLimitMs > 0
                 ? external.seekLimitMs : null,
+            loopsTrackNatively: external?.loopsTrackNatively === true,
         };
+    },
+
+    // Repeat one, handed to the player's own repeat of the track where it has one: it then sounds
+    // the song again by itself. A player that declared nothing here is left alone, and its repeat
+    // one stays Folia's own replay. The player's answer says what its repeat holds afterwards, and
+    // is handed back as it came: only the track's own repeat is the player carrying the song around.
+    async setExternalTrackRepeat(song: SongResult, on: boolean): Promise<ExternalTrackRepeatAnswer | null> {
+        const external = getOnlineMusicProviderForSong(song)?.externalPlayback;
+        if (external?.loopsTrackNatively !== true || !external.setTrackRepeat) return null;
+        // Read once, so a provider that changes its own repeat of the track mid-call is not asked
+        // twice, and bound to the provider the declaration was read from.
+        const setTrackRepeat = external.setTrackRepeat.bind(external);
+        return await runRequest(providerForSong(song), 'audio', () => setTrackRepeat(on)) ?? null;
     },
 
     // 一个播放不了的外部播放器（没装、版本改了找不到里面的播放器）之后，把平台的歌换回它自己的标准播放：

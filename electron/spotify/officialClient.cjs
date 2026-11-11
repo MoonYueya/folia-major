@@ -323,15 +323,52 @@ const START_QUEUE_SOURCE = `async ({ api, owned, replaceQueue }) => {
 // is answered so it can be put back afterwards (`RESTORE_STATE_SOURCE`).
 //
 // Repeat: the play names one track uri and no context, so Spotify's repeat of the list has nothing
-// to repeat here and is the listener's to keep. Repeat of the track does not: it replays this song
-// wherever the queue would go on, which is exactly the handoff Folia wrote into that queue.
+// to repeat here and is the listener's to keep. Repeat of the track does not, unless this play is
+// one of Folia's repeat one's: it replays this song wherever the queue would go on, which is exactly
+// the handoff Folia wrote into that queue. `singleLoop` says Folia is in repeat one, and then the
+// repeat of the track is what the song is to end in: it is kept, or turned on, in this same call -
+// turning it off here and on again a moment later would be two writes of one setting, and a read
+// landing between them would see a repeat that is neither.
 // Shuffle: it reorders the queue the app plays from, so the songs Folia put behind this one would
 // come out in an order Folia never wrote. It is turned off, and said so.
-const PLAY_STATE_SOURCE = `async ({ api }) => {
+//
+// `changed.repeat` names the value the app held before this play wrote it, so a restore knows what
+// to put back; `left` is the value the app holds afterwards, which is what a later restore compares
+// against before writing (a play of repeat one and one of anything else leave different values).
+// `left` is answered only for a play that asked for repeat one: every other play keeps the answer it
+// has always given.
+const PLAY_STATE_SOURCE = `async ({ api, singleLoop = false }) => {
   const changed = { repeat: null, shuffle: null };
+  // Spotify's own numbers by the names the renderer sends, read in the page as the page reads them.
+  const nameOf = value => value === 2 ? 'one' : value === 1 ? 'all' : value === 0 ? 'off' : null;
   let s;
   try { s = api.player.getState(); } catch { return changed; }
-  if (s && s.repeat === 2 && typeof api.player.setRepeat === 'function') {
+  const before = s && typeof s.repeat === 'number' ? s.repeat : null;
+  const canRepeat = typeof api.player.setRepeat === 'function';
+  // Repeat one of Folia's: the app's repeat of the track is the end this song is to come to, so it
+  // is kept where the app already holds it and turned on where it does not. What the app held before
+  // that is the listener's own, kept the first time this run writes one.
+  if (singleLoop) {
+    // What the app holds afterwards, which is what a later restore compares against before writing a
+    // value back: the track once this call has it repeating one, and the value it had before where the
+    // call was refused or never made. Read off the one state read at the top rather than read again -
+    // this is the only writer of the repeat here, so a second read could only say what this one says.
+    // A call the app refused wrote nothing: the value it found is not one of Folia's, so the answer
+    // names none, and no restore of a later play may take that value for one Folia left behind.
+    let left = before === 2 ? 2 : null;
+    if (before !== null && canRepeat && before !== 2) {
+      try {
+        await api.player.setRepeat(2);
+        changed.repeat = nameOf(before);
+        left = 2;
+      } catch { /* left as it was */ }
+    }
+    if (s && s.shuffle === true && typeof api.player.setShuffle === 'function') {
+      try { await api.player.setShuffle(false); changed.shuffle = true; } catch { /* left as it was */ }
+    }
+    return { ...changed, left };
+  }
+  if (before === 2 && canRepeat) {
     try { await api.player.setRepeat(0); changed.repeat = 'one'; } catch { /* left as it was */ }
   }
   if (s && s.shuffle === true && typeof api.player.setShuffle === 'function') {
@@ -348,8 +385,12 @@ const PLAY_STATE_SOURCE = `async ({ api }) => {
 // The state is read first, and where it cannot be read nothing is written at all: without it there
 // is no sign the value is still the one Folia wrote, so the record is kept for a later restore.
 // A player that refuses a call leaves that one as it is.
-const RESTORE_STATE_SOURCE = `async ({ api, repeat, shuffle }) => {
-  const put = { repeat: false, shuffle: false, read: true };
+//
+// `repeatExpected` is the number this run last left the app's repeat at: off after a play, the track
+// while repeat one is the app's own repeat of it. A value of the listener's own made after that
+// change is a different number, so one record covers both changes without ever writing over them.
+const RESTORE_STATE_SOURCE = `async ({ api, repeat, shuffle, repeatExpected = 0 }) => {
+  const put = { repeat: false, shuffle: false, read: true, now: null };
   if (repeat === null && !shuffle) return put;
   let s = null;
   try { s = typeof api.player.getState === 'function' ? api.player.getState() : null; } catch { s = null; }
@@ -357,12 +398,18 @@ const RESTORE_STATE_SOURCE = `async ({ api, repeat, shuffle }) => {
     put.read = false;
     return put;
   }
+  // What the app holds of the repeat afterwards: the value written back here, the value it kept
+  // where a call of its own was refused, and the listener's own value where that one is theirs to
+  // hold. A player that names no repeat answers none.
   if (repeat !== null && typeof api.player.setRepeat === 'function') {
-    if (s.repeat === 0) {
-      try { await api.player.setRepeat(repeat); put.repeat = true; } catch { /* left as it is */ }
+    if (s.repeat === repeatExpected) {
+      try { await api.player.setRepeat(repeat); put.repeat = true; put.now = repeat; } catch { put.now = typeof s.repeat === 'number' ? s.repeat : null; }
     } else {
       put.repeat = 'theirs';
+      put.now = typeof s.repeat === 'number' ? s.repeat : null;
     }
+  } else if (typeof s.repeat === 'number') {
+    put.now = s.repeat;
   }
   if (shuffle && typeof api.player.setShuffle === 'function') {
     if (s.shuffle === false) {
@@ -372,6 +419,68 @@ const RESTORE_STATE_SOURCE = `async ({ api, repeat, shuffle }) => {
     }
   }
   return put;
+}`;
+
+// Repeat of the track turned on for a repeat one of Folia's, run in the page. The listener's own
+// repeat is the one to put back afterwards, and only the first change of a run keeps it: a later
+// call finds the app the way this one left it, and answering that value would keep Folia's own.
+// Repeat of the list is left alone, as a play leaves it: a play names one track uri and no context,
+// so an app repeating the track repeats this song and nothing else.
+const REPEAT_TRACK_SOURCE = `async ({ api }) => {
+  let s = null;
+  try { s = typeof api.player.getState === 'function' ? api.player.getState() : null; } catch { s = null; }
+  if (!s || typeof s !== 'object') return { read: false, before: null, now: null };
+  const before = typeof s.repeat === 'number' ? s.repeat : null;
+  if (before === 2 || typeof api.player.setRepeat !== 'function') return { read: true, before, now: before };
+  try {
+    await api.player.setRepeat(2);
+    return { read: true, before, now: 2 };
+  } catch {
+    return { read: true, before, now: before };
+  }
+}`;
+
+// Repeat of the track given back when repeat one goes off, run in the page. The app may be left
+// repeating this song by itself - the listener had it on before the run, or a start in repeat one
+// kept theirs - and that would sound this song again where Folia's queue moves on, so it is never
+// left on here. `keep` is the value the record says was the listener's, or null for none, and a
+// repeat of the track found is decided by that record alone: a recorded value that is not the track
+// goes back itself - it repeats nothing by itself, so Folia plays on from its queue, and an off
+// written over it would lose what they had - while a record of the track itself, or no record at
+// all, is turned off, since the track is what Folia cannot play on from. Any other value found is
+// the one this run left (`expected`), so the record goes back where the app still holds it; a value
+// they set themselves after the run is different from `expected` and is theirs, so nothing is
+// written over it. A state that cannot be read changes nothing and says so, which is what leaves
+// both the record and the repeat for the next call.
+//
+// `action` is what became of the repeat: 'put' a recorded value back, 'release' turned the app's own
+// repeat of the track off, 'theirs' a value the listener set meanwhile, 'none' nothing to do.
+const RELEASE_STATE_SOURCE = `async ({ api, keep = null, expected = 0 }) => {
+  let s = null;
+  try { s = typeof api.player.getState === 'function' ? api.player.getState() : null; } catch { s = null; }
+  if (!s || typeof s !== 'object') return { read: false, action: 'none', now: null };
+  const before = typeof s.repeat === 'number' ? s.repeat : null;
+  const writable = typeof api.player.setRepeat === 'function';
+  // A repeat of the track is the one value nothing may be left on, and the record alone says what
+  // becomes of it: a recorded value that is not the track goes back, since it repeats nothing by
+  // itself and Folia plays on from its queue - an off written over it would lose what the listener
+  // had. A record of the track itself, or no record at all, is turned off: the track is what Folia
+  // cannot play on from, and with no record there is nothing of theirs to write back. What the app
+  // holds is not compared here - a repeat of the track keeps this song whatever the listener did
+  // meanwhile, so even one they turned to the track themselves is turned off.
+  if (before === 2) {
+    if (!writable) return { read: true, action: 'none', now: before };
+    if (keep !== null && keep !== 2) {
+      try { await api.player.setRepeat(keep); return { read: true, action: 'put', now: keep }; } catch { return { read: true, action: 'none', now: before }; }
+    }
+    try { await api.player.setRepeat(0); return { read: true, action: 'release', now: 0 }; } catch { return { read: true, action: 'none', now: before }; }
+  }
+  if (keep !== null && before === expected && keep !== 2) {
+    if (!writable) return { read: true, action: 'none', now: before };
+    try { await api.player.setRepeat(keep); return { read: true, action: 'put', now: keep }; } catch { return { read: true, action: 'none', now: before }; }
+  }
+  if (keep !== null && before !== expected) return { read: true, action: 'theirs', now: before };
+  return { read: true, action: 'none', now: before };
 }`;
 
 // Spotify's repeat (0 off, 1 the list, 2 the track) by the names the renderer sends.
@@ -384,6 +493,10 @@ const repeatModeOf = name => {
     return REPEAT_MODES[name];
 };
 const repeatNameOf = (modes, value) => Object.keys(modes).find(name => modes[name] === value) ?? null;
+// What the log calls each repeat, by the name `repeatNameOf` gives it: a start that changed one of
+// the listener's says which repeat it found, and off is a value of its own.
+const REPEAT_WORDS = Object.freeze({ off: 'repeat that was off', all: 'repeat of the list', one: 'repeat of the track' });
+const repeatWordsOf = name => (Object.hasOwn(REPEAT_WORDS, name) ? REPEAT_WORDS[name] : null);
 
 // What Spotify marks as an advertisement (metadata.is_advertisement, measured as the string 'true').
 const isAdvertisementItem = item => Boolean(item && (
@@ -1054,6 +1167,10 @@ function createSpotifyOfficialClient({
     // listener's - and put back by `restoreUserState`.
     let changedRepeat = null;
     let changedShuffle = null;
+    // The number this run last left the app's repeat at: 0 after a play, 2 while repeat one is the
+    // app's own repeat of the track. A restore reads it back to tell a change of Folia's from one the
+    // listener made afterwards, so it moves with every change and never with a read.
+    let leftRepeat = 0;
     // What those two were before this run changed them, for the renderer and for the log.
     const changedState = () => ({ repeat: changedRepeat, shuffle: changedShuffle });
 
@@ -1529,11 +1646,17 @@ function createSpotifyOfficialClient({
         // for `restoreUserState`. The answer carries that record as `changed`, so a caller that asked
         // for the song knows what of the listener's the play took; the other answers are the app's
         // own words.
-        async play({ id, startMs = 0, userAction = true, written = [], replaceQueue = false }) {
+        //
+        // `singleLoop` says Folia is in repeat one: the app's repeat of the track is then the end the
+        // song is to come to, so it is kept or turned on by this same call rather than turned off
+        // here and on again a moment later (`setTrackRepeat`). The value it is left at becomes what a
+        // later restore compares against before writing one back.
+        async play({ id, startMs = 0, userAction = true, written = [], replaceQueue = false, singleLoop = false }) {
             const uri = trackUri(id);
             const from = Math.max(0, Math.round(Number(startMs) || 0));
             const owned = Array.isArray(written) ? written.filter(id => typeof id === 'string') : [];
             const replace = replaceQueue === true;
+            const single = singleLoop === true;
             // The number a queue write of this song is allowed to see: anything else there is a start that
             // came later, and a write that belongs to the song before it.
             playSerial += 1;
@@ -1561,7 +1684,7 @@ function createSpotifyOfficialClient({
         if (waited && (waited.answer === 'unavailable' || waited.answer === 'premium-only')) return waited;
         if (waited !== 'loaded') return waited;
         if (!current()) return 'preempted';
-        const changed = await (${PLAY_STATE_SOURCE})({ api });
+        const changed = await (${PLAY_STATE_SOURCE})({ api, singleLoop: ${single} });
         if (!current()) return 'preempted';
         if (${from} > 0) await api.player.seekTo(${from});
         return { answer: 'loaded', changed, emptied };
@@ -1588,15 +1711,31 @@ function createSpotifyOfficialClient({
             const changed = answered.changed ?? {};
             // The first play of the run that changes one keeps what the listener had: a later play
             // finds the app the way Folia left it, and its own value of that one says nothing.
-            if (changed.repeat === 'one' && changedRepeat === null) changedRepeat = 'one';
+            if (changed.repeat && changedRepeat === null) changedRepeat = changed.repeat;
             if (changed.shuffle === true && changedShuffle === null) changedShuffle = true;
-            if (changed.repeat === 'one' || changed.shuffle === true) {
-                log('[SpotifyClient] the listener\'s own '
-                    + [changed.repeat === 'one' ? 'repeat of the track' : null, changed.shuffle === true ? 'shuffle' : null]
-                        .filter(Boolean).join(' and ')
-                    + ' had to be changed for Folia\'s order; it is put back when this way is left');
+            // The value this play left the app's repeat at: off after a play of anything but repeat
+            // one, the track while Folia is in repeat one. A restore reads it back to tell a change
+            // of Folia's from one the listener made afterwards.
+            if (single) {
+                if (typeof changed.left === 'number') leftRepeat = changed.left;
+            } else if (changed.repeat) {
+                leftRepeat = 0;
             }
-            return 'loaded';
+            if (changed.repeat || changed.shuffle === true) {
+                // The value it found, named as it was: a repeat of the track, of the list, or one that
+                // was off. Naming them all the track would say the app repeated this song already.
+                log('[SpotifyClient] the listener\'s own '
+                    + [changed.repeat ? repeatWordsOf(changed.repeat) : null, changed.shuffle === true ? 'shuffle' : null]
+                        .filter(Boolean).join(' and ')
+                    + (single ? ' had to be changed for repeat one' : ' had to be changed for Folia\'s order')
+                    + '; it is put back when this way is left');
+            }
+            // A start in repeat one answers the repeat the app holds after it beside the word it took
+            // the track with: the renderer reads the app's own turn of the song only where that value
+            // is the track, and null says nothing wrote one. Every other start answers that word alone.
+            return single
+                ? { answer: 'loaded', repeat: typeof changed.left === 'number' ? changed.left : null }
+                : 'loaded';
         },
 
         // The songs that are to follow, put in Spotify's queue so it moves on to them by itself. The
@@ -1640,6 +1779,91 @@ function createSpotifyOfficialClient({
       `);
         },
 
+        // Repeat of the track for a repeat one of Folia's, carried out by the app itself: it sounds
+        // the song again from its start, so no start is asked for at its end and nothing of the songs
+        // that follow goes into its queue. `on` turns it on where the app does not already repeat the
+        // track, keeping what the listener had the way a play keeps it; false gives that value back,
+        // and leaves the app repeating nothing by itself where that value is the track or unknown. A
+        // state that cannot be read changes nothing, and says so rather than guessing.
+        //
+        // A repeat the listener had on themselves before this run is the one value no record names,
+        // and it is still a repeat Folia cannot play on from: it is turned off all the same, and kept
+        // as theirs to put back when this way of playing is left. That is what a start of anything but
+        // repeat one does with it, so the two agree.
+        //
+        // Only the repeat is put back when repeat one goes off: the shuffle belongs to leaving this
+        // way of playing. Restoring it here would shuffle the songs Folia wrote into the app's queue
+        // while Folia goes on playing from that queue.
+        async setTrackRepeat({ on }) {
+            if (on === true) {
+                let answer;
+                try {
+                    answer = await call(`return (${REPEAT_TRACK_SOURCE})({ api });`, { retry: false });
+                } catch (error) {
+                    warn('[SpotifyClient] repeat of the track could not be turned on for repeat one', error);
+                    return { read: false, changed: false, now: null };
+                }
+                if (!answer?.read) {
+                    log('[SpotifyClient] Spotify\'s repeat could not be read; repeat one is left to Folia\'s own replay');
+                    return { read: false, changed: false, now: null };
+                }
+                const changed = answer.before !== 2 && answer.now === 2;
+                if (changed && changedRepeat === null) changedRepeat = repeatNameOf(REPEAT_MODES, answer.before);
+                if (answer.now === 2) {
+                    if (leftRepeat !== 2) {
+                        leftRepeat = 2;
+                        log('[SpotifyClient] repeat one is Spotify\'s own repeat of the track; the listener\'s repeat is put back when it goes off');
+                    }
+                    return { read: true, changed, now: 2 };
+                }
+                warn('[SpotifyClient] Spotify would not repeat the track; repeat one replays the song itself instead');
+                // The value the app kept: what it holds afterwards, which is what tells the renderer
+                // that no turn of this song is the app's own.
+                return { read: true, changed: false, now: answer.now };
+            }
+            let answer;
+            try {
+                answer = await call(`
+        const keep = ${JSON.stringify(changedRepeat === null ? null : REPEAT_MODES[changedRepeat])};
+        return (${RELEASE_STATE_SOURCE})({ api, keep, expected: ${JSON.stringify(leftRepeat)} });
+      `, { retry: false });
+            } catch (error) {
+                warn('[SpotifyClient] the repeat of the track could not be given back; what is to be put back is kept and tried again', error);
+                return { read: false, changed: false, now: null };
+            }
+            // A state that could not be read says nothing about the repeat: the record stays as it was
+            // and the next call asks again, rather than writing over a value nobody has seen.
+            if (!answer?.read) {
+                log('[SpotifyClient] Spotify\'s repeat could not be read; what is to be put back is kept and tried again');
+                return { read: false, changed: false, now: null };
+            }
+            // A recorded value went back, or turned out to be the listener's own now: either way the
+            // record is done.
+            if (answer.action === 'put' || answer.action === 'theirs') changedRepeat = null;
+            if (answer.action === 'theirs') {
+                log('[SpotifyClient] the listener\'s own repeat was changed in Spotify meanwhile and is left as it is');
+            }
+            if (answer.action === 'release') {
+                // The app holds no repeat after this call, whatever the record says: that is what a
+                // restore reads before writing a value back.
+                leftRepeat = 0;
+                // A repeat of the track turned off with no record is the listener's own, and this run
+                // is what took it away: it is kept as the one to put back when this way of playing is
+                // left. A record stops here instead - one naming the track is that same value and
+                // needs nothing added, and a record of any other value was put back above, not
+                // released.
+                if (changedRepeat === null) {
+                    changedRepeat = 'one';
+                    log('[SpotifyClient] Spotify was left repeating the track with no record of it being the listener\'s; it is turned off and put back when this way is left');
+                }
+            } else if (answer.action === 'put') {
+                log('[SpotifyClient] the listener\'s own repeat was put back as it was');
+            }
+            // The value the app holds after the restore: what was put back, the value it kept where a
+            // call of its own was refused, and the listener's own where they changed it meanwhile.
+            return { read: true, changed: false, now: typeof answer.now === 'number' ? answer.now : null };
+        },
+
         // What a play of this run changed of the listener's own repeat and shuffle, as it was before:
         // `{ repeat: 'one' | 'all' | null, shuffle: true | null }`. Read by the renderer and by a test;
         // nothing is asked of Spotify here.
@@ -1656,13 +1880,14 @@ function createSpotifyOfficialClient({
         async restoreUserState({ allowStart = false } = {}) {
             const repeat = changedRepeat;
             const shuffle = changedShuffle;
+            // What is still to be put back.
             if (repeat === null && shuffle === null) return changedState();
             let put;
             try {
                 put = await call(`
         const repeat = ${JSON.stringify(repeat === null ? null : REPEAT_MODES[repeat])};
         const shuffle = ${JSON.stringify(shuffle === true)};
-        return (${RESTORE_STATE_SOURCE})({ api, repeat, shuffle });
+        return (${RESTORE_STATE_SOURCE})({ api, repeat, shuffle, repeatExpected: ${JSON.stringify(leftRepeat)} });
       `, { allowStart, retry: false });
             } catch (error) {
                 warn('[SpotifyClient] the listener\'s own repeat and shuffle could not be put back; they are kept and tried again', error);
@@ -1683,7 +1908,7 @@ function createSpotifyOfficialClient({
             if (keptByListener.length) {
                 log('[SpotifyClient] the listener\'s own ' + keptByListener.join(' and ') + ' were changed in Spotify meanwhile and are left as they are');
             }
-            return { repeat: changedRepeat, shuffle: changedShuffle };
+            return changedState();
         },
 
         // The player's state; from the media session (then `fallback` is set and no track is named)
@@ -1743,6 +1968,7 @@ function createSpotifyOfficialClient({
 }
 
 module.exports = {
-    CDP_PORT, MAX_QUEUED, PLAY_STATE_SOURCE, QUEUE_SOURCE, RESTORE_STATE_SOURCE, START_QUEUE_SOURCE, START_WAIT_SOURCE,
-    createSpotifyOfficialClient, findLauncher, isAdvertisementItem, repeatModeOf, statusFromMediaSession, statusFromPlayerState,
+    CDP_PORT, MAX_QUEUED, PLAY_STATE_SOURCE, QUEUE_SOURCE, RELEASE_STATE_SOURCE, REPEAT_TRACK_SOURCE, RESTORE_STATE_SOURCE,
+    START_QUEUE_SOURCE, START_WAIT_SOURCE,
+    createSpotifyOfficialClient, findLauncher, isAdvertisementItem, repeatModeOf, repeatNameOf, repeatWordsOf, statusFromMediaSession, statusFromPlayerState,
 };
