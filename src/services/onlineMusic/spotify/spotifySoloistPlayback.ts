@@ -99,7 +99,11 @@ export const spotifyPlaybackMode = (): SpotifyPlaybackMode => mode;
 
 export const spotifySoloistPlayback: OnlineExternalPlaybackProvider = {
     // The program sounds the song on its own, so a real spectrum needs the machine's own sound. Its
-    // start does answer, its status is cheap, and it registers no media session of its own.
+    // start does answer, its status is cheap, and it registers no media session of its own. Nothing
+    // is declared about how long a move of the player may take: a seek behind a play waits in the
+    // `inTurn` chain of electron/spotify/soloist.cjs for that play to take the track, which is how
+    // long the one before it may hold it rather than how long the move itself takes, and a longer
+    // limit for moves belongs to the general layer alone.
     capturesSystemAudio: true,
     canPlay: song => {
         try {

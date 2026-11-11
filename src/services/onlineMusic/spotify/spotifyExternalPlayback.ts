@@ -34,6 +34,11 @@ export const spotifyExternalPlayback: OnlineExternalPlaybackProvider = {
     get holdsMediaKeysWhilePlaying() {
         return current().holdsMediaKeysWhilePlaying === true;
     },
+    // Only the official app gives its calls a limit to declare; Soloist declares none, so this
+    // answers nothing while that is the way Spotify plays.
+    get seekLimitMs() {
+        return current().seekLimitMs;
+    },
     canPlay: song => current().canPlay?.(song) ?? true,
     isPrepared: song => current().isPrepared?.(song) ?? false,
     async prepareNext(song, upcoming, options) {

@@ -461,12 +461,17 @@ const unreachableClientFailure = (error: unknown): boolean => {
 export const spotifyClientPlayback: OnlineExternalPlaybackProvider = {
     // The app sounds the song in a program of its own, so a real spectrum has to come from the
     // machine's own sound; a start is asked for and the interface moves on instead of waiting for
-    // the app's answer; its status is read at a slower cadence while it sounds Folia's song; and
-    // the keys stay Folia's for a song started here.
+    // the app's answer; its status is read at a slower cadence while it sounds Folia's song; the
+    // keys stay Folia's for a song started here. A move of the song runs the bar and the lyrics on
+    // for eight seconds: that is the default the main process gives every call it makes (CALL_LIMIT_MS
+    // in electron/spotify/officialClient.cjs), while the hop that falls back to the system media
+    // session has a limit of its own, so no call is promised to answer within it - a call that runs
+    // past it leaves the bar standing at the limit it extrapolated to until an answer comes.
     capturesSystemAudio: true,
     startsWithoutWaiting: true,
     backsOffStatusPolls: true,
     holdsMediaKeysWhilePlaying: true,
+    seekLimitMs: 8000,
     canPlay: song => songIdOf(song) !== null,
     isUnreachableFailure: unreachableClientFailure,
     isPrepared(song) {

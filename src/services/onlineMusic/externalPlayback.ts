@@ -97,7 +97,20 @@ type ExternalSession = {
     preparedQueueKey: string;
     positionRevision: number;
     seekPending: boolean;
+    /**
+     * Where the player stood before the first move that is still in flight, in seconds: a move asked
+     * for on top of one the player has not taken yet is sent from that same spot, so a refusal of it
+     * takes the bar back there rather than to the target the move it replaced was sent from. Null
+     * while no move is in flight.
+     */
+    seekBeforeSec: number | null;
     seeking: boolean;
+    /**
+     * A move landed and no answer has reported the player's position since: the next playing answer
+     * says where the player is now, not where a tick that arrived late says it was, so it is followed
+     * even where it is a little behind the spot the listener dropped the bar on.
+     */
+    afterSeek: boolean;
 };
 
 export const externalMediaShim = new MediaShim('external:');
@@ -314,11 +327,31 @@ const refreshPreparedQueue = () => {
     });
 };
 
+/**
+ * How far this session's clock may run while a move is in flight, in seconds: what the way of
+ * playing declared (`seekLimitMs`), and the second `hifiClock` gives every player where it declared
+ * nothing.
+ */
+const seekExtrapolationSec = (current: ExternalSession): number => {
+    const limitMs = current.traits.seekLimitMs;
+    return typeof limitMs === 'number' && Number.isFinite(limitMs) && limitMs > 0 ? limitMs / 1000 : MAX_SAMPLE_AGE_SEC;
+};
+
 const syncClock = (positionSec: number, paused: boolean, sampledAtMs: number, holdBackward: boolean) => {
     if (!session) return;
     paused ||= session.live;
     const ageSec = paused ? 0 : Math.min(Math.max(0, (performance.now() - sampledAtMs) / 1000), MAX_SAMPLE_AGE_SEC);
-    session.clock.sync({ positionSec: positionSec + ageSec, samplePositionSec: positionSec, paused, nowMs: performance.now(), holdBackward });
+    // While a move is in flight no answer will come for it (see `poll`, `seekExternalPlayback`): a
+    // sync written then - a resume the move asked for, a pause it was given - runs on under the same
+    // longer limit, or it would put the bar back to the second it stood still for.
+    session.clock.sync({
+        positionSec: positionSec + ageSec,
+        samplePositionSec: positionSec,
+        paused,
+        nowMs: performance.now(),
+        holdBackward,
+        ...(session.seekPending ? { maxExtrapolationSec: seekExtrapolationSec(session) } : {}),
+    });
 };
 
 const markPlaying = (positionSec: number, preserveClock = false) => {
@@ -337,6 +370,8 @@ const markPaused = (positionSec: number) => {
     session.starting = false;
     session.prefetchReady = false;
     session.sampledPosition = null;
+    // This answer is where the player stands after the move: the next playing one is read as progress.
+    session.afterSeek = false;
     syncClock(positionSec, true, performance.now(), true);
     externalMediaShim.markPaused();
     const playback = usePlaybackStore.getState();
@@ -400,8 +435,16 @@ const applyStatus = (status: ProviderExternalPlaybackStatus, sampledAtMs: number
     current.live = status.live === true;
     if (status.ended && status.skipped) current.skipped = status.skipped;
     if (status.isPlaying && status.mediaId && !status.seeking) {
-        if (current.live || (current.sampledPosition !== null && positionSec > current.sampledPosition + 0.05)) current.prefetchReady = true;
-        current.sampledPosition = positionSec;
+        if (current.afterSeek) {
+            // The answer right after a move may still name the position from before it: what it shows
+            // is a jump across the song, not the song sounding on, so it counts as nothing and the
+            // progress is told from an answer that came after it.
+            current.prefetchReady = false;
+            current.sampledPosition = null;
+        } else {
+            if (current.live || (current.sampledPosition !== null && positionSec > current.sampledPosition + 0.05)) current.prefetchReady = true;
+            current.sampledPosition = positionSec;
+        }
     } else {
         current.prefetchReady = false;
         current.sampledPosition = null;
@@ -460,7 +503,12 @@ const applyStatus = (status: ProviderExternalPlaybackStatus, sampledAtMs: number
         if (!current.playing) {
             markPlaying(positionSec);
         } else {
-            syncClock(positionSec, false, sampledAtMs, true);
+            // The first answer after a move is where the player is now: a position a little behind the
+            // spot the bar was dropped on is its own (it loads the song from around there), and holding
+            // the bar at that spot would freeze it and the lyrics until the player caught up.
+            const holdBackward = !current.afterSeek;
+            current.afterSeek = false;
+            syncClock(positionSec, false, sampledAtMs, holdBackward);
             emit({ type: 'status' });
         }
         // Only a player-confirmed start/resume may release deferred preparation.
@@ -669,12 +717,14 @@ export function startExternalPlayback(song: SongResult, startSec = 0, { userActi
     clock.setDuration(durationSec);
     clock.sync({ positionSec: Math.max(0, startSec), paused: true });
     // What this song's provider declared: a start that is no answer at all, asks that space themselves
-    // out. Every other player keeps the app's own waiting and cadence.
+    // out. Every other player keeps the app's own waiting and cadence. Read once here and held for
+    // the session: what the session follows is the way of playing it was started with, even where
+    // that way changes under a song that is already sounding.
     const traits = omni.externalPlaybackTraits(song);
     session = {
         song, songKey, attempt, clock, durationSec, traits,
         announced: false, playing: false, starting: false, sampledPosition: Math.max(0, startSec), prefetchReady: false, live: false, ended: false, foreign: false,
-        advertisement: false, degraded: false, handedOver: false, preparedQueueKey: '', positionRevision: 0, seekPending: false, seeking: false,
+        advertisement: false, degraded: false, handedOver: false, preparedQueueKey: '', positionRevision: 0, seekPending: false, seekBeforeSec: null, seeking: false, afterSeek: false,
     };
     failureNoted = false;
     pollFailures = 0;
@@ -796,7 +846,9 @@ export async function adoptExternalPlayback(song: SongResult): Promise<boolean> 
     session = {
         song, songKey, attempt, clock, durationSec,
         announced: false, playing: false, starting: false, sampledPosition: null, prefetchReady: false, live: false, ended: false, foreign: false,
-        advertisement: false, degraded: false, traits: omni.externalPlaybackTraits(song), handedOver: false, preparedQueueKey: '', positionRevision: 0, seekPending: false, seeking: false,
+        // The traits are read as the take-over starts and held for the session, as a start holds them:
+        // what is followed is the way of playing this song was picked up from.
+        advertisement: false, degraded: false, traits: omni.externalPlaybackTraits(song), handedOver: false, preparedQueueKey: '', positionRevision: 0, seekPending: false, seekBeforeSec: null, seeking: false, afterSeek: false,
     };
     failureNoted = false;
     externalMediaShim.beginTrack(songKey);
@@ -1019,17 +1071,52 @@ export const seekExternalPlayback = (timeSec: number, { resume = false }: { resu
     const target = Math.max(0, current.durationSec === null ? timeSec : Math.min(timeSec, current.durationSec));
     current.ended = false;
     const revision = ++current.positionRevision;
+    // Where the player stood before the move: a move it refuses leaves it there, and the bar goes back
+    // to this the moment the refusal is known rather than to whatever a later answer happens to say.
+    // A move asked for while another is still in flight keeps the spot that one was sent from: the
+    // player takes the two as one, it has still not left that spot, and a refusal of the one asked
+    // for last must not put the bar on the target the one before it was only sent to.
+    const beforeSec = current.seekBeforeSec ?? current.clock.read();
+    current.seekBeforeSec = beforeSec;
     current.seekPending = true;
     current.prefetchReady = false;
     current.sampledPosition = null;
-    current.clock.sync({ positionSec: target, paused: !current.playing, holdBackward: false });
+    // No status ask answers while the move is in flight (see `poll`), so this position is the only
+    // one the bar and the lyrics have until the player takes it: it runs on for as long as the app's
+    // call for that move may go unanswered, instead of the second a tick-er's clock is given.
+    current.clock.sync({
+        positionSec: target, paused: !current.playing, holdBackward: false, maxExtrapolationSec: seekExtrapolationSec(current),
+    });
     externalMediaShim.markSeeked();
+    const askedAt = performance.now();
+    let refused = false;
     void omni.seekExternalPlayback(current.song, target).catch(error => {
         if (session !== current || current.positionRevision !== revision) return;
+        refused = true;
         console.warn('[ExternalPlayback] seek failed', error);
+        // The player never left the spot it stood on, so the bar returns to it at once: waiting for the
+        // next answer would leave it running on from a target the player never went to, and jumping back
+        // when that answer came. It runs on from there as the song is playing now - a press that came
+        // with the move is the listener's - and under the second every sync that is not a move in flight
+        // is given, that limit having belonged to a move the player never took. No ask is held for it
+        // either: the poll asked for below is the player's own word on where it is.
+        current.clock.sync({ positionSec: beforeSec, paused: !current.playing, holdBackward: false });
         emit({ type: 'failure', error });
+        emit({ type: 'status' });
     }).finally(() => {
-        if (session === current && current.positionRevision === revision) current.seekPending = false;
+        if (session === current && current.positionRevision === revision) {
+            current.seekPending = false;
+            // The move is settled, taken or refused: the next one is sent from wherever the player is
+            // then, which the answer this poll asks for says.
+            current.seekBeforeSec = null;
+            // The player has the move: the ask held for it is let go now rather than on its own half
+            // second, and the answer that follows says where the player is after it. A move that was
+            // refused is not one the player took, so nothing is read as the answer right after it.
+            current.afterSeek = !refused;
+            if (isExternalRoute()) schedulePoll(0);
+        }
+        // How long the move itself took, which is what says whether the clock had room to run on.
+        console.info('[ExternalPlayback] seek returned', { ms: Math.round(performance.now() - askedAt) });
     });
     if (resume && !current.playing) resumeExternalPlayback();
     return true;
