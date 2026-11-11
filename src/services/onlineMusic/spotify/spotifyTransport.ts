@@ -11,7 +11,7 @@ export type SpotifyOperation =
     | 'playback_mode' | 'soloist_state' | 'soloist_pick' | 'soloist_key' | 'soloist_restart' | 'soloist_open'
     | 'soloist_play' | 'soloist_pause' | 'soloist_resume' | 'soloist_seek' | 'soloist_volume' | 'soloist_status'
     | 'client_launch' | 'client_restart' | 'client_play' | 'client_queue' | 'client_pause' | 'client_resume' | 'client_seek'
-    | 'client_volume' | 'client_status' | 'client_status_found' | 'client_probe' | 'client_repeat';
+    | 'client_volume' | 'client_status' | 'client_status_found' | 'client_status_follow' | 'client_probe' | 'client_repeat';
 // The queries the main process sends for the renderer (`RENDERER_QUERIES` in the bridge).
 export type SpotifyQuery =
     | 'home' | 'homeSection' | 'browsePage' | 'queryWhatsNewFeed' | 'libraryV3' | 'fetchLibraryTracks' | 'fetchPlaylist'
@@ -53,10 +53,19 @@ export type SpotifyWireRepeatMode = 'off' | 'all' | 'one';
  * seconds, and something waits on every answer (a status read holds the next poll, a repeat write
  * holds repeat one, a queue write holds the queue). `client_play` is not here: it waits for the song
  * the app is loading, and the main process already limits it.
+ *
+ * `client_status_follow` is the one exception, and it is longer on purpose: that is the read which,
+ * at most once a minute and only where the app runs without a port Folia has found, carries the
+ * watcher's own search for the port; every other read of it is an ordinary one. That search reads
+ * the app's port file and runs a netstat over the machine's loopback listeners, which took up to
+ * about 5.6 seconds in the worst case measured - so a wait of a poll's length threw away the answer
+ * of every read the search landed on. Only the watcher asks for it, once every few seconds, so a
+ * long wait here holds nothing but its own next poll.
  */
 const CLIENT_CALL_LIMITS_MS: Partial<Record<SpotifyOperation, number>> = {
     client_status: 1500,
     client_status_found: 1500,
+    client_status_follow: 6000,
     client_volume: 1500,
     client_repeat: 1500,
     client_queue: 4000,

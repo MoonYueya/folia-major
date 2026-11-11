@@ -1173,9 +1173,10 @@ export const omni = {
     },
 
     // What the provider of `song` declared about how its external player plays: a real spectrum, a
-    // start without a wait, spaced-out status polls, keys held while the song sounds, and how long a
-    // move of it may take. A song whose provider has no external player, or a declaration it left
-    // out, answers false everywhere and no limit at all.
+    // start without a wait, spaced-out status polls, keys held while the song sounds, how long a
+    // move of it may take, whether repeat one is the player's own repeat of the track, and a player
+    // whose own window the listener keeps using. A song whose provider has no external player, or a
+    // declaration it left out, answers false everywhere and no limit at all.
     externalPlaybackTraits(song: SongResult): ExternalPlaybackTraits {
         const external = getOnlineMusicProviderForSong(song)?.externalPlayback;
         return {
@@ -1186,6 +1187,7 @@ export const omni = {
             seekLimitMs: typeof external?.seekLimitMs === 'number' && Number.isFinite(external.seekLimitMs) && external.seekLimitMs > 0
                 ? external.seekLimitMs : null,
             loopsTrackNatively: external?.loopsTrackNatively === true,
+            followsPlayerChanges: external?.followsPlayerChanges === true,
         };
     },
 
@@ -1267,6 +1269,34 @@ export const omni = {
         const external = getOnlineMusicProviderForSong(song)?.externalPlayback;
         if (!external?.runningStatus) return null;
         return await external.runningStatus(song);
+    },
+
+    // What a provider's own player has, asked of the provider rather than of a song: for the player
+    // a way of playing follows while the screen shows a song of another kind, which that player
+    // could never hold. Read by the provider's id, since no song here is that player's. A read only,
+    // as the one above is, and nothing where the provider cannot be asked without steering it.
+    async getExternalPlaybackRunningTrack(providerId: OmniProviderId): Promise<ProviderExternalPlaybackStatus | null> {
+        const external = getOnlineMusicProvider(providerId)?.externalPlayback;
+        if (!external?.runningTrack) return null;
+        return await external.runningTrack();
+    },
+
+    // Whether the way of playing a provider is on now follows what the listener does in the player's
+    // own window (the trait above, read without a song of that provider to name it).
+    followsPlayerChangesOf(providerId: OmniProviderId): boolean {
+        return getOnlineMusicProvider(providerId)?.externalPlayback?.followsPlayerChanges === true;
+    },
+
+    // The way of playing whose listener keeps using the player's own window, for a screen holding a
+    // song that player could never sound: the one that declared it, read off the providers rather
+    // than off a song. Null where no way of playing declares it now.
+    followingPlayerChangesProviderId(): OmniProviderId | null {
+        for (const provider of listOnlineMusicProviders()) {
+            if (provider.capabilities.externalPlayback && provider.externalPlayback?.followsPlayerChanges === true) {
+                return provider.id;
+            }
+        }
+        return null;
     },
 
     // The quality levels a provider tells apart, lowest first (`OnlinePlaybackProvider.audioQualityLevels`;

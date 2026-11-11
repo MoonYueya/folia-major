@@ -18,7 +18,7 @@ const omniMock = vi.hoisted(() => {
     /** What a way of playing that declared nothing about its moves answers (`omni.externalPlaybackTraits`). */
     const NONE_DECLARED = {
         capturesSystemAudio: false, startsWithoutWaiting: false, backsOffStatusPolls: false, holdsMediaKeysWhilePlaying: false,
-        seekLimitMs: null as number | null, loopsTrackNatively: false,
+        seekLimitMs: null as number | null, loopsTrackNatively: false, followsPlayerChanges: false,
     };
     return {
         NONE_DECLARED,
@@ -44,6 +44,7 @@ const omniMock = vi.hoisted(() => {
             holdsMediaKeysWhilePlaying: true,
             seekLimitMs: 8000,
             loopsTrackNatively: true,
+            followsPlayerChanges: true,
         })),
     };
 });
@@ -118,7 +119,7 @@ describe('a player taken over, before the listener picks a song of their own', (
     it('takes the player over without changing its level', async () => {
         // The listener's own level was set in Spotify's window: a take-over does not replace it.
         const taken = await engine.adoptExternalPlayback(song);
-        expect(taken).toBe(true);
+        expect(taken).toMatchObject({ attempt: expect.any(Number) });
         expect(engine.isExternalTakeoverPending()).toBe(true);
         expect(omniMock.setExternalPlaybackVolume).not.toHaveBeenCalled();
     });
@@ -679,7 +680,7 @@ describe('a start that runs on after the interface', () => {
         omniMock.playSongExternally.mockClear();
         omniMock.externalPlaybackTraits.mockReturnValue({
             capturesSystemAudio: true, startsWithoutWaiting: true, backsOffStatusPolls: true, holdsMediaKeysWhilePlaying: true,
-            seekLimitMs: 8000, loopsTrackNatively: false,
+            seekLimitMs: 8000, loopsTrackNatively: false, followsPlayerChanges: true,
         });
         useAudioSettingsStore.setState({ loopMode: 'one' });
         const start = engine.startExternalPlayback(song, 0);
@@ -765,7 +766,7 @@ describe('a move the player takes seconds to take', () => {
     /** What Spotify's own app declares (src/services/onlineMusic/spotify/spotifyClientPlayback.ts). */
     const DECLARED: ExternalPlaybackTraits = {
         capturesSystemAudio: true, startsWithoutWaiting: true, backsOffStatusPolls: true, holdsMediaKeysWhilePlaying: true,
-        seekLimitMs: 8000, loopsTrackNatively: true,
+        seekLimitMs: 8000, loopsTrackNatively: true, followsPlayerChanges: true,
     };
 
     /**

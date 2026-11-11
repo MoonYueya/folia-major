@@ -20,8 +20,8 @@ export const spotifyExternalPlayback: OnlineExternalPlaybackProvider = {
     },
     isUnreachableFailure: error => (current().isUnreachableFailure?.(error) ?? false),
     // Both programs sound the song outside every page of the app, so both take the machine's own
-    // sound for a real spectrum; the other three are the official app's alone. Read from whichever
-    // way is on, so the answers follow a change of it.
+    // sound for a real spectrum; the rest are the official app's alone. Read from whichever way is
+    // on, so the answers follow a change of it.
     get capturesSystemAudio() {
         return current().capturesSystemAudio === true;
     },
@@ -44,6 +44,11 @@ export const spotifyExternalPlayback: OnlineExternalPlaybackProvider = {
     get loopsTrackNatively() {
         return current().loopsTrackNatively === true;
     },
+    // The listener uses Spotify's own window by hand; Soloist is steered from here alone, so a
+    // change made in it is not one to follow.
+    get followsPlayerChanges() {
+        return current().followsPlayerChanges === true;
+    },
     canPlay: song => current().canPlay?.(song) ?? true,
     isPrepared: song => current().isPrepared?.(song) ?? false,
     async prepareNext(song, upcoming, options) {
@@ -62,6 +67,10 @@ export const spotifyExternalPlayback: OnlineExternalPlaybackProvider = {
     // The app left running by an earlier run, which this run may have found no port for yet: its own
     // read brings the one search for that port. Soloist is steered by Folia alone and answers nothing.
     runningStatus: song => current().runningStatus?.(song) ?? Promise.resolve(null),
+    // The same read for the player rather than for a song of Folia's: the listener may be playing
+    // something there while the screen shows a song of another kind. Soloist is steered by Folia
+    // alone, so only Spotify's own app answers anything here.
+    runningTrack: () => current().runningTrack?.() ?? Promise.resolve(null),
     getStatus: song => current().getStatus(song),
     isStatusForSong: (song, status) => current().isStatusForSong(song, status),
     // Only Spotify's own app has to be running before a song can sound in it; Soloist is started by

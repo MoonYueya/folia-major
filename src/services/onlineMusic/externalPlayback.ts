@@ -60,6 +60,10 @@ export type ExternalPlaybackEvent =
     | { type: 'ended'; skipped?: 'next' | 'previous'; heard?: boolean }
     | { type: 'failure'; error: unknown }
     | { type: 'foreign-track' }
+    // A player whose listener changes what it plays from its own window moved on to a track Folia
+    // did not ask for: that track is taken over by the bridge, and this session ends with it. An
+    // advertisement is never this: it is said as `advertisement` above.
+    | { type: 'track-changed'; status: ProviderExternalPlaybackStatus }
     // An advertisement between songs started (active) or ended: the app says so instead of the song.
     | { type: 'advertisement'; active: boolean }
     // The player fell back to a coarser channel (or came back to its precise one): said once an episode.
@@ -524,10 +528,17 @@ const applyStatus = (status: ProviderExternalPlaybackStatus, sampledAtMs: number
     }
     if (status.mediaId && !omni.isExternalPlaybackStatusForSong(current.song, status)) {
         if (!current.announced) return;
-        // The player is on a track this app did not ask for (someone used its own window). Stop it
-        // rather than let a song Folia knows nothing about keep sounding under Folia's controls.
         if (!current.foreign) {
             current.foreign = true;
+            // A player whose listener changes what it plays from its own window is followed: the
+            // track it moved on to is looked up and taken over by the bridge, and this session ends
+            // with the take-over. A player that declared nothing has the track stopped instead: a
+            // song Folia knows nothing about must not keep sounding under Folia's controls.
+            if (current.traits.followsPlayerChanges) {
+                console.info('[ExternalPlayback] the player has another track; it is taken over');
+                emit({ type: 'track-changed', status });
+                return;
+            }
             console.warn('[ExternalPlayback] the player has another track; it is paused');
             void omni.pauseExternalPlayback(current.song).catch(() => {});
             markPaused(positionSec);
@@ -946,15 +957,25 @@ export async function beginExternalPlayback(song: SongResult, startSec = 0, opti
 }
 
 /**
+ * A player taken over: the session the take-over is. A session says which one it is by the number
+ * its start was given, so a caller that asked for a song of its own while the take-over ran can tell
+ * the player it took from the one sounding now, and give up only its own.
+ */
+export type ExternalTakeOver = {
+    /** Which session of this route the take-over is (`ExternalSession.attempt`). */
+    readonly attempt: number;
+};
+
+/**
  * Takes over a track the player is already sounding (a window rebuild hands the song over; the
  * player outlives the window). The player is asked once: with `song` loaded, the route becomes the
  * external one, the clock and the polling attach to it and it is announced as it stands, playing or
  * paused. With another track or none, nothing is taken and the caller shows the song as it would
  * after a restart: paused. Never starts the player.
  */
-export async function adoptExternalPlayback(song: SongResult): Promise<boolean> {
+export async function adoptExternalPlayback(song: SongResult): Promise<ExternalTakeOver | null> {
     installExternalPlayback();
-    if (!omni.canPlayExternally(song)) return false;
+    if (!omni.canPlayExternally(song)) return null;
     stopTimer();
     // The player is followed as it stands: what it holds behind this song and the level it sounds
     // at are the listener's, not this run's, until a song is started here (`takeoverPending`).
@@ -985,7 +1006,7 @@ export async function adoptExternalPlayback(song: SongResult): Promise<boolean> 
     } catch (error) {
         console.warn('[ExternalPlayback] the player could not be asked what it has', error);
     }
-    if (session?.attempt !== attempt) return false;
+    if (session?.attempt !== attempt) return null;
     if (!status?.mediaId || !omni.isExternalPlaybackStatusForSong(song, status)) {
         // Not the song: the route goes back to the app's engine. What the player has (another track
         // the old window's queue moved it to, or nothing) is nobody's now; the caller stops it.
@@ -996,7 +1017,7 @@ export async function adoptExternalPlayback(song: SongResult): Promise<boolean> 
         withoutRouteGuard(() => setPlaybackRoute('web'));
         emit({ type: 'status' });
         console.info('[ExternalPlayback] the player has no track to take over', { songKey, hasTrack: Boolean(status?.mediaId) });
-        return false;
+        return null;
     }
     omni.adoptExternalPlayback(song);
     // The level it sounds at was set by the window that is gone; said again so it is known here.
@@ -1006,7 +1027,7 @@ export async function adoptExternalPlayback(song: SongResult): Promise<boolean> 
     setExternalPlaybackVolume();
     applyStatus(status, sampledAt);
     announceExternalPlayback();
-    if (session?.attempt !== attempt || !isExternalRoute()) return true;
+    if (session?.attempt !== attempt || !isExternalRoute()) return { attempt };
     // Announcing shows a playing player; a paused one is said here rather than on the next answer.
     if (!session.playing && !session.ended) markPaused(session.clock.read());
     if (handOverOnAdoption) {
@@ -1015,11 +1036,11 @@ export async function adoptExternalPlayback(song: SongResult): Promise<boolean> 
         handOverOnAdoption = false;
         session.handedOver = true;
         console.info('[ExternalPlayback] took the player over already handed on to the next window', { songKey });
-        return true;
+        return { attempt };
     }
     schedulePoll(STATUS_INTERVAL_MS);
     console.info('[ExternalPlayback] took the running player over', { songKey, playing: status.isPlaying });
-    return true;
+    return { attempt };
 }
 
 const stopReclaimTimer = () => {
@@ -1096,6 +1117,26 @@ export function releaseUnclaimedExternalTrack(song: SongResult, reason: string):
 }
 
 /**
+ * A track the player moved on to by itself could not be taken over (its platform has no such track
+ * any more, the lookup failed): the player is stopped rather than left sounding a song Folia knows
+ * nothing about, as a player that declared nothing is stopped the moment it moves on. This route is
+ * left with it, the way a stop leaves it, so nothing holds the player for the rest of the run: a
+ * reader that watches a player the listener keeps using (a way of playing that follows its own
+ * window) sees what they start there afterwards instead of a session that would skip it.
+ */
+export const stopForeignExternalPlayback = (): void => {
+    const current = session;
+    if (!current || !current.foreign) return;
+    console.warn('[ExternalPlayback] the track the player moved on to could not be taken over; it is paused');
+    // Shown paused, and said once as it always was: the player moved on, and this song is not it.
+    markPaused(current.clock.read());
+    emit({ type: 'foreign-track' });
+    stopExternalPlayback('the track the player moved on to could not be taken over');
+    // The app's own engine has the song again: the route is not the player's any more.
+    withoutRouteGuard(() => setPlaybackRoute('web'));
+};
+
+/**
  * The app has put the song on screen: from now on the player drives the transport, the shim and
  * the media observers. Called by the play path that began this track.
  */
@@ -1148,9 +1189,17 @@ export function stopExternalPlayback(reason: string): void {
 /**
  * Gives the song up because another one is starting: the player stops and the route goes back to
  * the app's own engine. The new song's play then decides its own route.
+ *
+ * `takeover` names the session a take-over made: only that session is given up. A song started here
+ * while the take-over was on its way has a session of its own by then, and it is left sounding - it
+ * is the song the listener asked for, not the one the take-over was about.
  */
-export function yieldExternalPlayback(reason: string): void {
+export function yieldExternalPlayback(reason: string, takeover?: ExternalTakeOver): void {
     if (!isExternalRoute()) return;
+    if (takeover && session?.attempt !== takeover.attempt) {
+        console.info('[ExternalPlayback] the player is not the one taken over any more; nothing is given up', { reason, attempt: takeover.attempt });
+        return;
+    }
     stopExternalPlayback(reason);
     setPlaybackRoute('web');
 }

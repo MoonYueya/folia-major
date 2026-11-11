@@ -603,6 +603,14 @@ export interface OnlineExternalPlaybackProvider {
      */
     backsOffStatusPolls?: boolean;
     /**
+     * The listener changes what this player plays from the player's own window, and the app follows
+     * those changes instead of stopping them: a track started there is taken over as it stands (the
+     * song shown, the clock, the transport), and the player's own queue and level are left alone
+     * until a song is started here. True for a player the listener keeps using by hand; absent or
+     * false for one this app alone steers and for one whose changes stop the playback.
+     */
+    followsPlayerChanges?: boolean;
+    /**
      * The system media keys belong to Folia while a song this route started sounds here, even where
      * the player registers no media session of its own: a key the app let go would reach nothing.
      * True where the keys are held for the song alone; absent or false leaves them to the rules
@@ -668,6 +676,15 @@ export interface OnlineExternalPlaybackProvider {
      * the track it shows is that song, by the title and the artist it shows; that answer is `degraded`.
      */
     runningStatus?(song: SongResult): Promise<ProviderExternalPlaybackStatus | null>;
+    /**
+     * The track this player is on now, whoever asked for it: no song of this app is compared with
+     * it, so it answers for a player Folia is not steering at all - the listener started something
+     * there while Folia showed a song of another kind. Absent where the player can only be steered
+     * from here (the track it holds is this app's own anyway). A read only: nothing is started,
+     * resumed or paused for it, and an answer that names no track - the coarse channel, an
+     * advertisement, a player that cannot be reached - is null.
+     */
+    runningTrack?(): Promise<ProviderExternalPlaybackStatus | null>;
     /** The player's state now, from no cache. */
     getStatus(song: SongResult): Promise<ProviderExternalPlaybackStatus>;
     /** Whether the player's loaded track is `song` (the id in `status` may be a playback id). */
@@ -715,6 +732,8 @@ export interface ExternalPlaybackTraits {
     seekLimitMs: number | null;
     /** Repeat one is the player's own repeat of the track, not the app's replay. */
     loopsTrackNatively: boolean;
+    /** A track the listener starts in the player's own window is taken over, not stopped. */
+    followsPlayerChanges: boolean;
 }
 
 /** An alternate title and artist that belong to the same song. */

@@ -302,6 +302,9 @@ const PORT_SEARCH_RETRY_MS = 3000;
 /**
  * The app asked once more where its DevTools port is, a few seconds after a read the media session
  * answered. A read that fails again leaves the first answer standing.
+ *
+ * This spends the restore's own budget (two looks a run, a few seconds apart), which is a thing done
+ * when Folia is reopened. The watcher's read carries a budget of its own and never touches this one.
  */
 const askAgainWhereItsPortIs = async (first: SpotifyWireClientStatus): Promise<SpotifyWireClientStatus> => {
     await new Promise(resolve => setTimeout(resolve, PORT_SEARCH_RETRY_MS));
@@ -518,11 +521,13 @@ export const spotifyClientPlayback: OnlineExternalPlaybackProvider = {
     // The app sounds the song in a program of its own, so a real spectrum has to come from the
     // machine's own sound; a start is asked for and the interface moves on instead of waiting for
     // the app's answer; its status is read at a slower cadence while it sounds Folia's song; the
-    // keys stay Folia's for a song started here. A move of the song runs the bar and the lyrics on
-    // for eight seconds: that is the default the main process gives every call it makes (CALL_LIMIT_MS
-    // in electron/spotify/officialClient.cjs), while the hop that falls back to the system media
-    // session has a limit of its own, so no call is promised to answer within it - a call that runs
-    // past it leaves the bar standing at the limit it extrapolated to until an answer comes.
+    // keys stay Folia's for a song started here; and the listener keeps using Spotify's own window
+    // beside Folia, so what they start there is followed rather than stopped. A move of the song runs
+    // the bar and the lyrics on for eight seconds: that is the default the main process gives every
+    // call it makes (CALL_LIMIT_MS in electron/spotify/officialClient.cjs), while the hop that falls
+    // back to the system media session has a limit of its own, so no call is promised to answer
+    // within it - a call that runs past it leaves the bar standing at the limit it extrapolated to
+    // until an answer comes.
     capturesSystemAudio: true,
     startsWithoutWaiting: true,
     backsOffStatusPolls: true,
@@ -531,6 +536,7 @@ export const spotifyClientPlayback: OnlineExternalPlaybackProvider = {
     // Repeat one is the app's own repeat of the track: it sounds the song again from its start by
     // itself, so nothing of the songs that follow goes into its queue and no start is asked for.
     loopsTrackNatively: true,
+    followsPlayerChanges: true,
     canPlay: song => songIdOf(song) !== null,
     isUnreachableFailure: unreachableClientFailure,
     isPrepared(song) {
@@ -836,6 +842,39 @@ export const spotifyClientPlayback: OnlineExternalPlaybackProvider = {
             console.warn('[SpotifyClient] the app could not say which track it is on', error);
             return null;
         }
+    },
+    // The track the app has now, whoever asked for it: the listener may have started something in
+    // Spotify's own window while Folia shows a song of another kind, so no song of this app is
+    // compared with the answer. A read only, and one that names no track of its own (the coarse
+    // channel, an advertisement) answers null, so nothing is taken over on a name that cannot be
+    // steered.
+    //
+    // It is read every few seconds for the whole of a run, so it spends no restore's port search: it
+    // asks for `client_status_follow`, which looks for the port on the slow budget the watcher has
+    // (a minute apart, six in a run, and only while the app runs without a port Folia has found), so
+    // a Spotify this run did not start can still be followed once it opens one.
+    async runningTrack() {
+        let data: SpotifyWireClientStatus;
+        try {
+            data = await requestSpotify<SpotifyWireClientStatus>('client_status_follow');
+        } catch (error) {
+            console.warn('[SpotifyClient] the app could not say which track it is on', error);
+            return null;
+        }
+        if (data.ad || data.fallback === true) return null;
+        // Read as the app's own answer, never through `statusOfClient`: that one compares the track
+        // with the song Folia asked for and reports an end or a step of its own, which is nothing
+        // this caller acts on.
+        const id = data.id.trim();
+        if (!id) return null;
+        return {
+            mediaId: id,
+            isPlaying: !data.isPaused && !data.isBuffering,
+            positionMs: Math.max(0, data.positionMs || 0),
+            durationMs: Math.max(0, data.durationMs || 0),
+            ended: false,
+            starting: !data.isPaused && data.isBuffering,
+        };
     },
     async getStatus() {
         return statusOfClient(await requestSpotify<SpotifyWireClientStatus>('client_status'));
