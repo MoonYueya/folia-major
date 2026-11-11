@@ -37,6 +37,7 @@ const NONE = {
     startsWithoutWaiting: false,
     backsOffStatusPolls: false,
     holdsMediaKeysWhilePlaying: false,
+    followsPlayerChanges: false,
 };
 
 const pickWay = async (mode: 'soloist' | 'client') => {
@@ -51,12 +52,13 @@ afterEach(() => {
 });
 
 describe('what the providers declare', () => {
-    it('the official app declares all four', () => {
+    it('the official app declares all of them', () => {
         expect(spotifyClientPlayback).toMatchObject({
             capturesSystemAudio: true,
             startsWithoutWaiting: true,
             backsOffStatusPolls: true,
             holdsMediaKeysWhilePlaying: true,
+            followsPlayerChanges: true,
         });
     });
 
@@ -65,6 +67,8 @@ describe('what the providers declare', () => {
         expect(spotifySoloistPlayback.startsWithoutWaiting).toBeUndefined();
         expect(spotifySoloistPlayback.backsOffStatusPolls).toBeUndefined();
         expect(spotifySoloistPlayback.holdsMediaKeysWhilePlaying).toBeUndefined();
+        // Folia steers Soloist alone, so a change made in the program is not the listener's doing.
+        expect(spotifySoloistPlayback.followsPlayerChanges).toBeUndefined();
     });
 
     it('Apple Music\'s own player declares none of them', () => {
@@ -72,17 +76,19 @@ describe('what the providers declare', () => {
         expect(appleMusicProvider.externalPlayback?.startsWithoutWaiting).toBeUndefined();
         expect(appleMusicProvider.externalPlayback?.backsOffStatusPolls).toBeUndefined();
         expect(appleMusicProvider.externalPlayback?.holdsMediaKeysWhilePlaying).toBeUndefined();
+        expect(appleMusicProvider.externalPlayback?.followsPlayerChanges).toBeUndefined();
     });
 });
 
 describe('omni.externalPlaybackTraits', () => {
-    it('reads the official app\'s four while that is the way Spotify plays', async () => {
+    it('reads the official app\'s declarations while that is the way Spotify plays', async () => {
         await pickWay('client');
         expect(omni.externalPlaybackTraits(songOn('spotify'))).toEqual({
             capturesSystemAudio: true,
             startsWithoutWaiting: true,
             backsOffStatusPolls: true,
             holdsMediaKeysWhilePlaying: true,
+            followsPlayerChanges: true,
         });
     });
 
@@ -101,15 +107,17 @@ describe('omni.externalPlaybackTraits', () => {
 });
 
 describe('the Spotify facade follows the way that is on', () => {
-    it('hands every one of the four to whichever program plays now', async () => {
+    it('hands every one of them to whichever program plays now', async () => {
         await pickWay('client');
         expect(spotifyExternalPlayback.capturesSystemAudio).toBe(true);
         expect(spotifyExternalPlayback.startsWithoutWaiting).toBe(true);
+        expect(spotifyExternalPlayback.followsPlayerChanges).toBe(true);
 
         await pickWay('soloist');
         expect(spotifyExternalPlayback.capturesSystemAudio).toBe(true);
         expect(spotifyExternalPlayback.startsWithoutWaiting).toBe(false);
         expect(spotifyExternalPlayback.backsOffStatusPolls).toBe(false);
         expect(spotifyExternalPlayback.holdsMediaKeysWhilePlaying).toBe(false);
+        expect(spotifyExternalPlayback.followsPlayerChanges).toBe(false);
     });
 });
