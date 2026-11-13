@@ -691,7 +691,11 @@ export interface OnlineExternalPlaybackProvider {
      * advertisement, a player that cannot be reached - is null.
      */
     runningTrack?(): Promise<ProviderExternalPlaybackStatus | null>;
-    /** The player's state now, from no cache. */
+    /**
+     * The player's state now, from no cache. The song is passed so that an answer from a coarse
+     * channel can name it: that channel gives no track id, and a track the caller could never name
+     * could never be taken over.
+     */
     getStatus(song: SongResult): Promise<ProviderExternalPlaybackStatus>;
     /** Whether the player's loaded track is `song` (the id in `status` may be a playback id). */
     isStatusForSong(song: SongResult, status: ProviderExternalPlaybackStatus): boolean;
