@@ -29,6 +29,14 @@ const STATUS_RETRY_INTERVAL_MS = 2000;
 const STATUS_RETRY_MAX_INTERVAL_MS = 10000;
 /** How far a position answer may be extrapolated, as `hifiClock` does. */
 const MAX_SAMPLE_AGE_SEC = 1;
+/**
+ * How often the player is asked while a move the listener made is being looked for: the answer that
+ * says it has loaded the spot is the one the bar is held for, and at the rate the player is followed
+ * at otherwise it arrives a whole poll late.
+ */
+const STATUS_SEEK_INTERVAL_MS = 100;
+/** How long a move is looked for this way before the player is followed at the ordinary rate again. */
+const STATUS_SEEK_LIMIT_MS = 3000;
 /** A player that stopped this close to the length has finished the track. */
 const END_TOLERANCE_SEC = 0.75;
 /**
@@ -62,12 +70,15 @@ const STALE_READ_TOLERANCE_SEC = 1;
  * A player that never loads the spot the bar was dropped on must not hold the bar off its own line
  * for good, so past this the player's own word stands.
  */
-const STALE_READ_PLAYING_LIMIT_MS = 5000;
+const STALE_READ_PLAYING_LIMIT_MS = 10_000;
 /**
  * How far apart the spot the bar was dropped on and the line the song stood on have to be for a read
  * to be told from the other. Nearer than this a read could be either, so none of them is given up.
+ * A shorter drag hands the bar back to the player at once, and the spot it stood on is at most this
+ * far below it: a listener sees the position step back by under half a second once, and never a jump
+ * across the song.
  */
-const SEEK_TARGET_APART_SEC = 2;
+const SEEK_TARGET_APART_SEC = 0.5;
 
 export type ExternalPlaybackEvent =
     | { type: 'status' }
@@ -132,9 +143,18 @@ type ExternalSession = {
      * trigger that lands meanwhile waits for that answer rather than asking twice for one setting.
      */
     trackRepeatPending: boolean;
+
     /** The player now belongs to the window replacing this one: answers are no longer acted on. */
     handedOver: boolean;
     preparedQueueKey: string;
+    /**
+     * How many moves the listener has asked for: an ask for the position that was already on its way
+     * when one of them was made names the timeline before it, so its answer is dropped rather than
+     * followed. Counted rather than stamped before the ask: the move lands while that ask is out, and a
+     * stamp taken before it would drop the ask that follows too, which is the answer that says where
+     * the player is after the move. One counter serves both asks, the poll's and the start's seed: every
+     * move replaces the same timeline.
+     */
     positionRevision: number;
     seekPending: boolean;
     /**
@@ -176,8 +196,24 @@ type ExternalSession = {
     staleReadRunningSinceMs: number | null;
     /** A read of the old line was given up for this move: the bar was running ahead of the player. */
     staleReadGivenUp: boolean;
+    /** An answer naming the spot the move landed on has been followed: the move is done with. */
+    seekLanded: boolean;
+    /**
+     * The spot a move of the listener's landed on, in seconds, with the moment it landed: while the
+     * spot is still being looked for the player is asked every tenth of a second until an answer
+     * names it, so the wait for it is not the ordinary half second on top of the move. Null while no
+     * move is being looked for.
+     */
+    seekFollowAtSec: number | null;
+    seekFollowLandedMs: number;
     /** How far the bar ran ahead of the spot the player landed on, in seconds: held until it catches up. */
     landingHoldSec: number | null;
+    /**
+     * Until when, in performance.now() terms, a lead the bar ran up over the spot the player lands on is
+     * played out at the slower speed rather than stood still on: the move's own limit from the moment it
+     * landed. Past it a lead is held as any other one is.
+     */
+    moveHeldUntilMs: number;
     /**
      * The moment the song was last sounding while a read of the line was given up: how long a playing
      * song goes on holding the line is counted from it, so a stopped song has no such time running.
@@ -187,6 +223,19 @@ type ExternalSession = {
     staleReadNoted: boolean;
     /** The player's own last word on where its song stands, in seconds: the line it is on before a move. */
     lastPlayerPositionSec: number | null;
+    /**
+     * The spot the move this one replaced landed on, in seconds, with the moment it was replaced. The
+     * player answers a move it has taken and the one asked for on top of it as one, and goes on naming
+     * the spot it lands on from the first for a while: those answers are the old line still running,
+     * not a spot of the player's own. Null while no move has been replaced.
+     */
+    replacedLandingSec: number | null;
+    replacedLandingAtMs: number;
+    /**
+     * The last answer said the player had turned its own song round. The turn is one jump in the song
+     * whoever reads it, so the observers are told once however many answers name it.
+     */
+    replaying: boolean;
 };
 
 export const externalMediaShim = new MediaShim('external:');
@@ -526,7 +575,25 @@ const clearSettledMove = (current: ExternalSession) => {
     current.staleReadRunningSinceMs = null;
     current.staleReadPlayingSinceMs = null;
     current.staleReadGivenUp = false;
+    current.seekLanded = false;
     current.staleReadNoted = false;
+    current.seekFollowAtSec = null;
+    current.seekFollowLandedMs = 0;
+};
+
+/**
+ * Whether this answer names the spot the move landed on while that move is being looked for: the
+ * player has loaded it, and what it says from here is followed as any other answer is. Read before the
+ * answer is judged, since the spot it names is the whole of what is asked of it, and judging the
+ * answer that lands the move is what forgets the move. The spot is read against the moment the move
+ * landed: the answer that names it comes from that moment on, and the drop is followed along as the
+ * song sounds.
+ */
+const namesLandingSpot = (current: ExternalSession, positionSec: number): boolean => {
+    const targetSec = current.seekFollowAtSec;
+    if (targetSec === null || positionSec < targetSec - STALE_READ_TOLERANCE_SEC) return false;
+    const sinceLandedSec = Math.max(0, performance.now() - current.seekFollowLandedMs) / 1000;
+    return positionSec <= targetSec + sinceLandedSec + STALE_READ_TOLERANCE_SEC;
 };
 
 /**
@@ -575,22 +642,33 @@ const isStaleMoveRead = (current: ExternalSession, positionSec: number): boolean
     const dropReachedSec = current.staleReadRunningSinceMs === null ? 0 : sinceAskedSec;
     // That spot has reached this far: a read inside it is the drop's own, even where the two lines are
     // near enough to be confused. Following the player is what shows the drop going on, and only as far
-    // as the two are apart can they be told apart at all.
-    if (positionSec >= targetSec - STALE_READ_TOLERANCE_SEC
-        && positionSec <= targetSec + dropReachedSec + STALE_READ_TOLERANCE_SEC) {
+    // as the two are apart can they be told apart at all. Where the bar was dropped ahead of the line
+    // the song stood on, that line is behind the drop: a read there is the line still running, and
+    // following it put the bar back before the drop for a whole poll, which a short drag showed as a
+    // jump back over the spot the listener had just picked.
+    const dropLowSec = targetSec > fromSec ? targetSec : targetSec - STALE_READ_TOLERANCE_SEC;
+    if (positionSec >= dropLowSec && positionSec <= targetSec + dropReachedSec + STALE_READ_TOLERANCE_SEC) {
         clearSettledMove(current);
         return false;
     }
     // The line the song stood on is read as the stretch it can be anywhere on: it stood still where it
     // was, as a player that held its spot through the move names it, or it ran on from there for as long
     // as the song sounded, as one that went on playing until it loaded the drop names it.
-    const runningHighSec = fromSec + (current.staleReadRunningSinceMs === null ? 0 : sinceAskedSec);
+    // The spot the move this one replaced landed on is the far end of that line for as long as the
+    // player stands there, which it does until it has loaded the spot asked for last.
+    const replacedHighSec = current.replacedLandingSec === null
+        ? 0
+        : current.replacedLandingSec + Math.max(0, nowMs - current.replacedLandingAtMs) / 1000;
+    const runningHighSec = Math.max(
+        fromSec + (current.staleReadRunningSinceMs === null ? 0 : sinceAskedSec),
+        replacedHighSec,
+    );
     if (positionSec < fromSec - STALE_READ_TOLERANCE_SEC || positionSec > runningHighSec + STALE_READ_TOLERANCE_SEC) {
         clearSettledMove(current);
         return false;
     }
     // A song that has been sounding for longer than a move is given has said enough: past this the
-    // answer stands rather than holding the bar off the player's own line for good. The five seconds
+    // answer stands rather than holding the bar off the player's own line for good. The ten seconds
     // run from the move landing, or from the song being set going again after it was dropped on it
     // stopped, which is the moment it starts sounding; a stopped song has no such time at all.
     const heldSinceMs = current.staleReadPlayingSinceMs;
@@ -638,6 +716,15 @@ const syncClock = (positionSec: number, paused: boolean, sampledAtMs: number, ho
  */
 const holdSettledMoveSpot = () => {
     if (!session || session.seekSettledAtSec === null) return;
+    // Inside the window a move is given, the spot this read names is written under the same limit with
+    // the bar standing where it is: the clock then knows the lead and plays it out at the slower speed,
+    // so a read that names the old line for the whole window leaves the bar and the lyrics moving. A
+    // stopped song plays nothing out, and past the window the bar is held as it always was.
+    const playsOut = session.playing && performance.now() <= session.moveHeldUntilMs;
+    if (playsOut) {
+        syncClock(session.clock.read(), false, performance.now(), true, seekExtrapolationSec(session));
+        return;
+    }
     syncClock(session.clock.read(), !session.playing, performance.now(), false);
 };
 
@@ -779,8 +866,15 @@ const applyStatus = (status: ProviderExternalPlaybackStatus, sampledAtMs: number
     // the song stood on until one names the spot it landed on (see isStaleMoveRead). Taken before the
     // read is judged, since judging the answer that lands the move is what forgets it.
     const settledMove = current.seekSettledAtSec !== null;
+    // Asked before the read is judged: judging is what forgets a move the answer has landed, so the
+    // answer that names the spot the move landed on is the one this has to be read from.
+    const namesTheLandingSpot = namesLandingSpot(current, positionSec);
     const staleMoveRead = status.replayed !== true && status.mediaId !== ''
         && status.seeking !== true && isStaleMoveRead(current, positionSec);
+    // The move is done with once an answer names the spot it landed on. Told before that answer is
+    // followed, since following it forgets the move.
+    const answeredForTheSpot = !staleMoveRead && namesTheLandingSpot;
+    if (answeredForTheSpot) current.seekLanded = true;
     // A read that still names the spot before the move applies everything it says about the player -
     // it is stopped, or it has started - and nothing it says about where the song stands: that is the
     // spot the bar was dropped on, which the clock already runs on from. What it gets instead of a
@@ -793,10 +887,20 @@ const applyStatus = (status: ProviderExternalPlaybackStatus, sampledAtMs: number
     // jumping backwards a poll after the drop had already landed. A move whose answers never named the
     // old line is followed as it always was: the player was already there when it answered.
     if (!staleMoveRead && landedHoldSec !== null) current.landingHoldSec = landedHoldSec;
-    if (current.landingHoldSec !== null && current.clock.read() - positionSec > current.landingHoldSec) current.landingHoldSec = null;
+    // The lead is kept for as long as the bar is ahead of the player: while the answers go on naming the
+    // line the song stood on the bar runs on past the spot the move landed on, so the lead it holds is
+    // the one it stands at now rather than the one it was found with. It is given up once the player
+    // has come up to the bar, and a lead past the longest one played out is left to the clock.
+    if (current.landingHoldSec !== null) {
+        const leadSec = current.clock.read() - positionSec;
+        if (leadSec <= 0) current.landingHoldSec = null;
+        else current.landingHoldSec = Math.max(current.landingHoldSec, leadSec);
+    }
     const settledSpotSec = staleMoveRead ? current.seekSettledAtSec ?? positionSec : positionSec;
     if (status.isPlaying && status.mediaId && !status.seeking) {
-        if (current.afterSeek || staleMoveRead) {
+        // The first answer after a move says where the player is now rather than where the song went
+        // on from: read as progress it would say the song jumped from that spot to this one.
+        if (staleMoveRead || (current.afterSeek && !current.seekLanded)) {
             // The answer right after a move may still name the position from before it: what it shows
             // is a jump across the song, not the song sounding on, so it counts as nothing and the
             // progress is told from an answer that came after it.
@@ -865,7 +969,11 @@ const applyStatus = (status: ProviderExternalPlaybackStatus, sampledAtMs: number
     if (status.replayed === true) {
         current.ended = false;
         current.clock.sync({ positionSec, paused: false, holdBackward: false });
-        externalMediaShim.markSeeked();
+        // One turn is one jump: the answers that go on naming it are the same jump read again.
+        if (!current.replaying) externalMediaShim.markSeeked();
+        current.replaying = true;
+    } else {
+        current.replaying = false;
     }
     if (status.seeking || current.seeking) {
         current.clock.sync({ positionSec, paused: current.live || !status.isPlaying, holdBackward: false });
@@ -900,8 +1008,13 @@ const applyStatus = (status: ProviderExternalPlaybackStatus, sampledAtMs: number
             // The first answer after a move is where the player is now: a position a little behind the
             // spot the bar was dropped on is its own (it loads the song from around there), and holding
             // the bar at that spot would freeze it and the lyrics until the player caught up.
-            const holdLimitSec = current.landingHoldSec ?? (current.afterSeek ? 0 : undefined);
-            const holdBackward = !current.afterSeek || current.landingHoldSec !== null;
+            // Inside the window the move is given, a lead the bar holds because its answers went on
+            // naming the old line is played out at the slower speed rather than stood still on. An
+            // answer the player gives for the spot itself, with none of those before it, steps the bar
+            // back onto the player once, as it always did.
+            const moveWindowOpen = !answeredForTheSpot && performance.now() <= current.moveHeldUntilMs;
+            const holdLimitSec = current.landingHoldSec ?? (moveWindowOpen ? seekExtrapolationSec(current) : (current.afterSeek ? 0 : undefined));
+            const holdBackward = !current.afterSeek || current.landingHoldSec !== null || moveWindowOpen;
             current.afterSeek = false;
             syncClock(positionSec, false, sampledAtMs, holdBackward, holdLimitSec);
             emit({ type: 'status' });
@@ -923,24 +1036,44 @@ const applyStatus = (status: ProviderExternalPlaybackStatus, sampledAtMs: number
     markPaused(settledSpotSec, settledMove ? 0 : undefined);
 };
 
+/**
+ * How soon the player is asked again. A song is followed at the ordinary rate, and a move of the
+ * listener's that the player has taken but not loaded yet is looked for every tenth of a second until
+ * it is: the answer that says the spot has loaded is what the bar is held for, and asking at the
+ * ordinary rate leaves it a whole poll late. Past the limit the ordinary rate is back, so a player
+ * that never loads the spot is not asked that often for the rest of the song.
+ */
+const followDelayMs = (current: ExternalSession): number => (
+    current.seekFollowAtSec === null || performance.now() > current.seekFollowLandedMs + STATUS_SEEK_LIMIT_MS
+        ? STATUS_INTERVAL_MS
+        : STATUS_SEEK_INTERVAL_MS
+);
+
 async function poll(): Promise<void> {
     const current = session;
     if (!current || current.handedOver || pollRunning || !isExternalRoute()) return;
     if (current.seekPending) { schedulePoll(STATUS_INTERVAL_MS); return; }
-    const positionRevision = current.positionRevision;
     pollRunning = true;
     const startedAt = performance.now();
+    const revisionAtAsk = current.positionRevision;
     let delay = STATUS_INTERVAL_MS;
+    let answered = false;
     try {
         const status = await omni.getExternalPlaybackStatus(current.song);
-        if (session !== current || !isExternalRoute() || current.positionRevision !== positionRevision) return;
+        // A move the listener made while this ask was on its way owns the timeline now: the answer names
+        // where the song stood before it, and following it would put the bar back there. Asking is not
+        // held for a move that is still in flight, so that the ask the move sends is the one that says
+        // where the song was left.
+        if (session !== current || !isExternalRoute() || current.positionRevision !== revisionAtAsk) return;
         // The answer names a position the page read about half a round trip ago.
         applyStatus(status, (startedAt + performance.now()) / 2);
+        answered = true;
         failureNoted = false;
         pollFailures = 0;
     } catch (error) {
-        // Handed over meanwhile: a failed answer says nothing this window acts on either.
-        if (session !== current || current.handedOver || !isExternalRoute() || current.positionRevision !== positionRevision) return;
+        // Handed over meanwhile, or a move of the listener's owns the timeline: a failed answer says
+        // nothing this window acts on either.
+        if (session !== current || current.handedOver || !isExternalRoute() || current.positionRevision !== revisionAtAsk) return;
         pollFailures += 1;
         delay = retryDelayFor(current, pollFailures);
         if (!failureNoted) {
@@ -953,7 +1086,12 @@ async function poll(): Promise<void> {
         if (current.playing || current.starting) markPaused(current.clock.read());
     } finally {
         pollRunning = false;
-        if (session === current && !current.handedOver && isExternalRoute()) schedulePoll(delay);
+        if (session === current && !current.handedOver && isExternalRoute()) {
+            // The rate the move asks for is read here, after the answer: the very answer that lands the
+            // move is the one that hands the song back to the ordinary rate.
+            if (answered) delay = followDelayMs(current);
+            schedulePoll(delay);
+        }
     }
 }
 
@@ -1139,7 +1277,7 @@ export function startExternalPlayback(song: SongResult, startSec = 0, { userActi
         // the first sync after the song is shown asks the player what it holds. Where the start did
         // carry the ask, that sync asks for the same value again and the player, already repeating
         // the track, writes nothing.
-        advertisement: false, degraded: false, trackRepeat: null, trackRepeatAsked: false, trackRepeatPending: false, handedOver: false, preparedQueueKey: '', positionRevision: 0, seekPending: false, seekBeforeSec: null, seeking: false, afterSeek: false, seekSettledAtSec: null, seekSettledFromSec: null, seekSettledLandedMs: 0, seekSettledAskedMs: 0, staleReadAtSec: null, staleReadRunningSinceMs: null, staleReadPlayingSinceMs: null, staleReadGivenUp: false, landingHoldSec: null, staleReadNoted: false, lastPlayerPositionSec: null,
+        advertisement: false, degraded: false, trackRepeat: null, trackRepeatAsked: false, trackRepeatPending: false, handedOver: false, preparedQueueKey: '', positionRevision: 0, seekPending: false, seekBeforeSec: null, seeking: false, afterSeek: false, seekSettledAtSec: null, seekSettledFromSec: null, seekSettledLandedMs: 0, seekSettledAskedMs: 0, staleReadAtSec: null, staleReadRunningSinceMs: null, staleReadPlayingSinceMs: null, staleReadGivenUp: false, landingHoldSec: null, moveHeldUntilMs: 0, seekFollowAtSec: null, seekFollowLandedMs: 0, seekLanded: false, staleReadNoted: false, lastPlayerPositionSec: null, replacedLandingSec: null, replacedLandingAtMs: 0, replaying: false,
     };
     failureNoted = false;
     pollFailures = 0;
@@ -1274,7 +1412,7 @@ export async function adoptExternalPlayback(song: SongResult): Promise<ExternalT
         announced: false, playing: false, starting: false, sampledPosition: null, prefetchReady: false, live: false, ended: false, foreign: false,
         // The traits are read as the take-over starts and held for the session, as a start holds them:
         // what is followed is the way of playing this song was picked up from.
-        advertisement: false, degraded: false, traits: omni.externalPlaybackTraits(song), trackRepeat: null, trackRepeatAsked: false, trackRepeatPending: false, handedOver: false, preparedQueueKey: '', positionRevision: 0, seekPending: false, seekBeforeSec: null, seeking: false, afterSeek: false, seekSettledAtSec: null, seekSettledFromSec: null, seekSettledLandedMs: 0, seekSettledAskedMs: 0, staleReadAtSec: null, staleReadRunningSinceMs: null, staleReadPlayingSinceMs: null, staleReadGivenUp: false, landingHoldSec: null, staleReadNoted: false, lastPlayerPositionSec: null,
+        advertisement: false, degraded: false, traits: omni.externalPlaybackTraits(song), trackRepeat: null, trackRepeatAsked: false, trackRepeatPending: false, handedOver: false, preparedQueueKey: '', positionRevision: 0, seekPending: false, seekBeforeSec: null, seeking: false, afterSeek: false, seekSettledAtSec: null, seekSettledFromSec: null, seekSettledLandedMs: 0, seekSettledAskedMs: 0, staleReadAtSec: null, staleReadRunningSinceMs: null, staleReadPlayingSinceMs: null, staleReadGivenUp: false, landingHoldSec: null, moveHeldUntilMs: 0, seekFollowAtSec: null, seekFollowLandedMs: 0, seekLanded: false, staleReadNoted: false, lastPlayerPositionSec: null, replacedLandingSec: null, replacedLandingAtMs: 0, replaying: false,
     };
     failureNoted = false;
     externalMediaShim.beginTrack(songKey);
@@ -1536,6 +1674,14 @@ export const seekExternalPlayback = (timeSec: number, { resume = false }: { resu
     current.seekPending = true;
     current.prefetchReady = false;
     current.sampledPosition = null;
+    // This move replaces where the one before it landed, and that spot is one the player answers from
+    // for a while yet: it takes the two as its own and only ever names one of them. Read as a spot of
+    // its own, the answer naming it was the player's word and the bar went back there - a second drag
+    // inside the wait of the first fell the whole way back to where that one landed. It is read as the
+    // far end of the line the song stood on instead: the player has not left that spot for this move.
+    current.replacedLandingSec = current.seekFollowAtSec ?? current.seekSettledAtSec;
+    current.replacedLandingAtMs = performance.now();
+    current.landingHoldSec = null;
     // No status ask answers while the move is in flight (see `poll`), so this position is the only
     // one the bar and the lyrics have until the player takes it: it runs on for as long as the app's
     // call for that move may go unanswered, instead of the second a tick-er's clock is given.
@@ -1581,6 +1727,10 @@ export const seekExternalPlayback = (timeSec: number, { resume = false }: { resu
             current.seekSettledFromSec = refused ? null : stoodAtSec;
             current.seekSettledLandedMs = refused ? 0 : landedAt;
             current.seekSettledAskedMs = refused ? 0 : askedAt;
+            // The spot is looked for from here: the player is asked every tenth of a second until an
+            // answer names it, so the answer that shows the drop is not the ordinary half second late.
+            current.seekFollowAtSec = refused ? null : target;
+            current.seekFollowLandedMs = refused ? 0 : landedAt;
             // The line the song stood on runs on from the moment the move was asked for, which is when
             // the song went on from it. The five seconds it is held for are counted from the answer that
             // took the move, so a call that took a while is no time the song was on that line, and a song
@@ -1590,6 +1740,10 @@ export const seekExternalPlayback = (timeSec: number, { resume = false }: { resu
             current.staleReadPlayingSinceMs = refused || !current.playing ? null : landedAt;
             current.staleReadGivenUp = false;
             current.landingHoldSec = null;
+            // The answers that follow a move may name the line the song stood on for as long as the move
+            // is given: a lead the bar runs up over the spot the player lands on is played out at the
+            // slower speed inside that window rather than stood still on.
+            current.moveHeldUntilMs = refused ? 0 : landedAt + seekExtrapolationSec(current) * 1000;
             current.staleReadNoted = false;
             if (isExternalRoute()) schedulePoll(0);
         }
