@@ -71,8 +71,6 @@ contextBridge.exposeInMainWorld('electron', {
         }
     },
     debugReportRendererMemory: (report) => ipcRenderer.send('debug-renderer-memory', report),
-    // The freeze probe's marks and switch: one-way, sent while a listener drags a bar.
-    debugFrameProbe: (message) => ipcRenderer.send('debug-frame-probe', message),
     onDebugMemorySample: (callback) => {
         const listener = (_event, sample) => callback(sample);
         ipcRenderer.on('debug-memory-sample', listener);

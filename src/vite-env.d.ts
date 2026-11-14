@@ -877,8 +877,6 @@ declare global {
       /** What this process can say about itself that the metrics table cannot see from outside. */
       debugRendererMemory?: () => Promise<{ pid: number; privateKB: number; sharedKB: number; blinkAllocatedKB: number } | null>;
       debugReportRendererMemory?: (report: { pid: number; privateKB?: number; sharedKB?: number; blinkAllocatedKB?: number; heapUsedKB?: number }) => void;
-      /** The freeze probe: the renderer's marks, and the switch that starts the main process's half. */
-      debugFrameProbe?: (message: { kind: 'start' | 'stop' } | { kind: 'mark'; label: string; action: string }) => void;
       onDebugMemorySample?: (callback: (sample: DebugMemorySample) => void) => () => void;
       /** One-way stage marks from the automix session into the runtime log. */
       diagMark?: (text: string) => void;
