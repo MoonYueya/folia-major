@@ -1,5 +1,6 @@
 import { getExternalPosition, isExternalRoute, subscribeExternalPlayback } from '../onlineMusic/externalPlayback';
 import { usePlaybackStore } from '../../stores/usePlaybackStore';
+import { audioPower } from '../../stores/motionSignals';
 
 // src/services/debug/frameProbe.ts
 // What the lyric styles are drawing from when a listener says their animation stops: the frames the
@@ -30,6 +31,10 @@ type Probe = {
     lastPositionSec: number;
     stillSinceMs: number;
     lyricTimeStillMs: number;
+    /** The power the styles last drew from, and how long it has stood at that very value. */
+    lastPower: number;
+    heldSinceMs: number;
+    spectrumHeldMs: number;
     frameHandle: number;
     timer: ReturnType<typeof setTimeout> | null;
     unsubscribeStore: (() => void) | null;
@@ -55,6 +60,7 @@ const finish = (windows: Probe) => {
         storeWrites: windows.storeWrites,
         emits: windows.emits,
         lyricTimeStillMs: windows.lyricTimeStillMs,
+        spectrumHeldMs: windows.spectrumHeldMs,
     });
 };
 
@@ -70,11 +76,21 @@ const frame = (windows: Probe) => {
     // The position the styles animate on: a frame in which it did not move is the picture standing
     // still, whichever clock the frame loop of the moment reads.
     const positionSec = getExternalPosition();
-    if (positionSec > windows.lastPositionSec) {
+    // Any change counts, a drop back as much as a step forward: a listener who drags the bar backwards
+    // moved the line, and reading that as the line standing still reported a stall that never happened.
+    if (positionSec !== windows.lastPositionSec) {
         windows.lastPositionSec = positionSec;
         windows.stillSinceMs = nowMs;
     }
     windows.lyricTimeStillMs = Math.round(nowMs - windows.stillSinceMs);
+    // The power the styles draw their bars and their beat from: a frame that leaves it at the very
+    // value of the frame before is a picture standing still, which is what a frozen capture looks like.
+    const power = audioPower.get();
+    if (power !== windows.lastPower) {
+        windows.lastPower = power;
+        windows.heldSinceMs = nowMs;
+    }
+    windows.spectrumHeldMs = Math.round(nowMs - windows.heldSinceMs);
     windows.frameHandle = requestAnimationFrame(() => frame(windows));
 };
 
@@ -110,6 +126,9 @@ export const startFrameProbe = (action: FrameProbeAction): void => {
         lastPositionSec: getExternalPosition(),
         stillSinceMs: nowMs,
         lyricTimeStillMs: 0,
+        lastPower: audioPower.get(),
+        heldSinceMs: nowMs,
+        spectrumHeldMs: 0,
         frameHandle: 0,
         timer: null,
         unsubscribeStore: null,

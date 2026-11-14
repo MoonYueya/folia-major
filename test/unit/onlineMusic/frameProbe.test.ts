@@ -48,7 +48,7 @@ const status = (overrides: Partial<ProviderExternalPlaybackStatus> = {}): Provid
 /** One line the probe wrote, as the log holds it. */
 type ProbeLine = {
     action: string; windowMs: number; gaps: unknown[]; longTasks: unknown[];
-    storeWrites: number; emits: number; lyricTimeStillMs: number;
+    storeWrites: number; emits: number; lyricTimeStillMs: number; spectrumHeldMs: number;
 };
 
 /** The lines the probe wrote, as the log holds them. */
@@ -116,7 +116,49 @@ describe('the frame probe', () => {
         expect(typeof line.storeWrites).toBe('number');
         expect(typeof line.emits).toBe('number');
         expect(typeof line.lyricTimeStillMs).toBe('number');
+        expect(typeof line.spectrumHeldMs).toBe('number');
         console.log('[probe] ' + JSON.stringify(line));
+    });
+
+    it('does not read a drop of the bar backwards as the line standing still', async () => {
+        // A listener drags the bar back over the song, which the clock follows at once: the position of
+        // every frame after it is lower than the one before, and none of them is a frame in which the
+        // line stood still. Read by "only a forward step counts", the whole drag was a stall.
+        await startFrom(242000);
+        const askedAt = performance.now();
+        omniMock.getExternalPlaybackStatus.mockImplementation(async () => status({
+            positionMs: Math.round(106600 + (performance.now() - askedAt) * 0.88), isPlaying: true,
+        }));
+        infoSpy.mockClear();
+        expect(engine.seekExternalPlayback(106.6)).toBe(true);
+        await vi.advanceTimersByTimeAsync(FRAME_PROBE_WINDOW_MS);
+        const line = probeLines()[0];
+        console.log('[probe back] ' + JSON.stringify({ lyricTimeStillMs: line.lyricTimeStillMs }));
+        expect(line.lyricTimeStillMs, 'a drag backwards is not a stall').toBeLessThan(100);
+    });
+
+    it('reports how long the power the styles draw stood at one value', async () => {
+        // The bars frozen where they were: exactly what a capture holding its last frame looks like,
+        // and what nothing else in the window does.
+        const { audioPower } = await import('@/stores/motionSignals');
+        await startFrom(30000);
+        // A window left open by the test before this one writes its own line first: it is settled here.
+        await vi.advanceTimersByTimeAsync(FRAME_PROBE_WINDOW_MS);
+        infoSpy.mockClear();
+        expect(engine.seekExternalPlayback(60)).toBe(true);
+        // Half a second in which the power the styles draw stays at one value - a capture holding its
+        // last frame - and then changes on every frame, which is the picture moving again.
+        audioPower.set(200);
+        await vi.advanceTimersByTimeAsync(500);
+        for (let frame = 0; frame < 20; frame += 1) {
+            audioPower.set(200 - frame);
+            await vi.advanceTimersByTimeAsync(100);
+        }
+        await vi.advanceTimersByTimeAsync(FRAME_PROBE_WINDOW_MS);
+        const line = probeLines()[0];
+        console.log('[probe spectrum] ' + JSON.stringify({ spectrumHeldMs: line.spectrumHeldMs }));
+        expect(line.spectrumHeldMs, 'about the half second it stood still').toBeGreaterThanOrEqual(400);
+        expect(line.spectrumHeldMs, 'and no longer than that').toBeLessThan(700);
     });
 
     it('writes one about a press of play after a pause, and one about the pause', async () => {
