@@ -10,7 +10,7 @@ import { MediaShim } from '../mediaShim';
 import { omni } from './omni';
 import { externalQueueSuccessors } from './externalQueue';
 import { useAudioSettingsStore } from '../../stores/useAudioSettingsStore';
-import { startFrameProbe } from '../debug/frameProbe';
+import { markFrameProbe } from '../debug/frameProbe';
 
 // src/services/onlineMusic/externalPlayback.ts
 // The playback route for a provider whose audio plays in a player of its own outside this app
@@ -1630,7 +1630,7 @@ export function yieldExternalPlayback(reason: string, takeover?: ExternalTakeOve
 export const pauseExternalPlayback = (): boolean => {
     const current = session;
     if (!current) return false;
-    startFrameProbe('pause');
+    markFrameProbe('pause');
     markPaused(current.clock.read());
     void omni.pauseExternalPlayback(current.song).then(() => {
         // The player took the command: it is there.
@@ -1646,7 +1646,7 @@ export const pauseExternalPlayback = (): boolean => {
 export const resumeExternalPlayback = (): boolean => {
     const current = session;
     if (!current) return false;
-    startFrameProbe('play');
+    markFrameProbe('play');
     markPlaying(current.clock.read());
     void omni.resumeExternalPlayback(current.song).then(() => {
         // The press reached the player.
@@ -1664,7 +1664,7 @@ export const seekExternalPlayback = (timeSec: number, { resume = false }: { resu
     const current = session;
     if (!current) return false;
     if (current.live || !Number.isFinite(timeSec)) return true;
-    startFrameProbe('seek');
+    markFrameProbe('seek');
     const target = Math.max(0, current.durationSec === null ? timeSec : Math.min(timeSec, current.durationSec));
     current.ended = false;
     const revision = ++current.positionRevision;

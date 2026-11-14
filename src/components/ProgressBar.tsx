@@ -2,6 +2,7 @@ import React, { useCallback, useLayoutEffect, useRef } from 'react';
 import { MotionValue, useMotionValueEvent } from 'framer-motion';
 import { FoliumProgressButtons, FoliumProgressLayers, useFoliumProgressContext } from '../mods/folium/registries/progress';
 import { getProgressFillStep, getProgressFillStepFraction } from './progressFillStep';
+import { markFrameProbe } from '../services/debug/frameProbe';
 
 // Folium public parts (mods/README.md): `data-folium-part` marks what mod CSS may
 // restyle — progress.root / track / fill / thumb / time / duration. Colors come
@@ -154,6 +155,7 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
 
     const handleSeekStart = (e: React.PointerEvent<HTMLInputElement>) => {
         if (disabled) return;
+        markFrameProbe('seek-down');
         isDraggingRef.current = true;
         e.currentTarget.setPointerCapture(e.pointerId);
         onSeekStart?.();
@@ -161,6 +163,7 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
 
     const handleSeekEnd = (e: React.PointerEvent<HTMLInputElement>) => {
         if (disabled) return;
+        markFrameProbe('seek-up');
         const value = Number(e.currentTarget.value);
         isDraggingRef.current = false;
         updateUI(value, true);

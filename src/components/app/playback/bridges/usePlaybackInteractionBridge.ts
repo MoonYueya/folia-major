@@ -20,6 +20,7 @@ import { errorFields } from '../../../../utils/errorText';
 import { hifiTransport, isHifiRoute } from '../../../../services/hifi/hifiPlayback';
 import { seekHifiRoute } from '../../../hifi/hifiRouteTransport';
 import { isExternalPaused, isExternalRoute, seekExternalPlayback } from '../../../../services/onlineMusic/externalPlayback';
+import { markFrameProbe } from '../../../../services/debug/frameProbe';
 
 // src/components/app/playback/bridges/usePlaybackInteractionBridge.ts
 
@@ -137,6 +138,7 @@ export function usePlaybackInteractionBridge({
 
     const togglePlay = useCallback((event?: React.MouseEvent | KeyboardEvent) => {
         event?.stopPropagation();
+        markFrameProbe('toggle-play');
 
         if (isNowPlayingStageActive) {
             return;

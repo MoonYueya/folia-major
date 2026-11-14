@@ -29,6 +29,8 @@ vi.mock('@/services/onlineMusic/externalPlayback', () => ({
     installExternalPlayback: () => {},
     subscribeExternalPlayback: () => () => {},
     isExternalRoute: () => env.externalRoute,
+    // The freeze probe reads the route's position while it watches; off this route it never asks.
+    getExternalPosition: () => 0,
     getExternalSong: () => env.externalSong,
     isExternalTakeoverPending: () => false,
     stopForeignExternalPlayback: () => {},

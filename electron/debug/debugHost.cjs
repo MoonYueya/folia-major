@@ -1,5 +1,6 @@
 const { createDebugLogWriter, logsRoot } = require('./debugLogWriter.cjs');
 const { createMemoryMonitor } = require('./memoryMonitor.cjs');
+const { createFrameProbeHost, watchWindowEvents } = require('./frameProbeHost.cjs');
 const { redactCredentials } = require('./redactCredentials.cjs');
 const { createSenderGuardedHandler } = require('../ipcAccessGuard.cjs');
 const fs = require('fs');
@@ -104,6 +105,12 @@ const readFdCounts = (metrics, { platform = process.platform, readdirSync = fs.r
 const runtimeLine = (tag, text) => {
     host?.runtimeLine(tag, text);
 };
+
+/**
+ * The freeze probe, for the parts of the main process that can block it. Null while the host is not
+ * up: a call before the debug module is created is nothing to record.
+ */
+const frameProbeBridge = () => host?.frameProbe ?? null;
 
 /**
  * Main's console lines, for the log panel inside the app.
@@ -230,11 +237,40 @@ const createDebugHost = ({ app, ipcMain, store, BrowserWindow, isTrustedSender }
         runtimeWriter = null;
     };
 
+    /** Whether the renderer has asked for the freeze probe: nothing is measured until it has. */
+    let frameProbeRunning = false;
+
     const writeRuntime = (at, level, tag, text) => {
         if (!runtimeWriter) return;
         const stamp = new Date(at).toISOString();
         // Credential values never reach the file, from any process (see redactCredentials.cjs).
         runtimeWriter.write(`${stamp} [${level}] ${tag ? `[${tag}] ` : ''}${redactCredentials(String(text)).replace(/\s+$/, '')}`);
+    };
+
+    // ---- freeze probe (main half) ------------------------------------------
+    //
+    // The renderer's own probe measures the frames it got. A picture that freezes can also be frozen
+    // from out here: this process busy in a loop, the window losing focus or being hidden, or the
+    // PowerShell the external player's guard spawns taking seconds. Measured only while the renderer asks for
+    // it, which it does for the external route alone.
+
+    const frameProbe = createFrameProbeHost({
+        log: (tag, detail) => writeRuntime(Date.now(), 'info', tag, JSON.stringify(detail)),
+    });
+    let unwatchWindows = () => {};
+    const startFrameProbe = () => {
+        if (frameProbeRunning) return;
+        frameProbeRunning = true;
+        frameProbe.start();
+        const main = BrowserWindow.getAllWindows().find(window => !window.isDestroyed());
+        unwatchWindows = watchWindowEvents(frameProbe, main);
+    };
+    const stopFrameProbe = () => {
+        if (!frameProbeRunning) return;
+        frameProbeRunning = false;
+        frameProbe.stop();
+        unwatchWindows();
+        unwatchWindows = () => {};
     };
 
     // ---- memory log --------------------------------------------------------
@@ -368,6 +404,18 @@ const createDebugHost = ({ app, ipcMain, store, BrowserWindow, isTrustedSender }
     }));
     // The renderer's answer about itself, sent back one tick after each sample it receives.
     ipcMain.on('debug-renderer-memory', firstPartyEvent('debug-renderer-memory', (_event, report) => rememberReport(report)));
+    // The freeze probe: the renderer's marks, and the switch that says whether this process measures at
+    // all. One-way, like the runtime lines: a mark is sent while a listener is dragging a bar.
+    ipcMain.on('debug-frame-probe', firstPartyEvent('debug-frame-probe', (_event, message) => {
+        if (!message || typeof message !== 'object') return;
+        if (message.kind === 'mark' && typeof message.label === 'string') {
+            frameProbe.mark(message.label, typeof message.action === 'string' ? message.action : '');
+        } else if (message.kind === 'start') {
+            startFrameProbe();
+        } else if (message.kind === 'stop') {
+            stopFrameProbe();
+        }
+    }));
     ipcMain.handle('debug-open-logs', firstParty('debug-open-logs', async (_event, which) => {
         const { shell } = require('electron');
         const path = require('path');
@@ -381,6 +429,16 @@ const createDebugHost = ({ app, ipcMain, store, BrowserWindow, isTrustedSender }
     }));
 
     ipcMain.on('debug-main-lines-ready', firstPartyEvent('debug-main-lines-ready', event => panel.subscribe(event.sender)));
+
+    /**
+     * The freeze probe, for the parts of this process that can block it: the external player's guard's PowerShell
+     * and its calls into the page. Null work is done unless the renderer asked for the probe.
+     */
+    const frameProbeBridge = {
+        note: (kind, detail) => { if (frameProbeRunning) frameProbe.note(kind, detail); },
+        noteCall: (kind, ms) => { if (frameProbeRunning) frameProbe.noteCall(kind, ms); },
+        running: () => frameProbeRunning,
+    };
 
     // Main's own console into the same file and into the app's log panel. Patched rather than
     // routed through call sites so that everything already logging - the analysis worker's tee,
@@ -399,6 +457,7 @@ const createDebugHost = ({ app, ipcMain, store, BrowserWindow, isTrustedSender }
     }
 
     app.on('will-quit', () => {
+        stopFrameProbe();
         stopMemory();
         closeRuntime();
         host = null;
@@ -406,9 +465,10 @@ const createDebugHost = ({ app, ipcMain, store, BrowserWindow, isTrustedSender }
 
     host = {
         runtimeLine: (tag, text) => writeRuntime(Date.now(), 'log', tag, text),
+        frameProbe: frameProbeBridge,
         describe,
         apply,
-        stop: () => { stopMemory(); closeRuntime(); host = null; },
+        stop: () => { stopFrameProbe(); stopMemory(); closeRuntime(); host = null; },
     };
 
     openRuntime();
@@ -418,4 +478,6 @@ const createDebugHost = ({ app, ipcMain, store, BrowserWindow, isTrustedSender }
     return host;
 };
 
-module.exports = { createDebugHost, createPanelFeed, consoleText, runtimeLine, migrateMemoryLogEnabled, readFdCounts, DEFAULTS };
+module.exports = {
+    createDebugHost, createPanelFeed, consoleText, frameProbeBridge, runtimeLine, migrateMemoryLogEnabled, readFdCounts, DEFAULTS,
+};

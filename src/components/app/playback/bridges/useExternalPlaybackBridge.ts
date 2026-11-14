@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import type { LyricData, SongResult } from '../../../../types';
 import type { NextTrackOptions } from '../../../../types/appPlayback';
 import { getExternalSong, installExternalPlayback, isExternalRoute, subscribeExternalPlayback } from '../../../../services/onlineMusic/externalPlayback';
+import { startFrameProbeWatch, stopFrameProbeWatch } from '../../../../services/debug/frameProbe';
 import { stopExternalSpectrumCapture, syncExternalSpectrumForRoute } from '../externalSpectrumCapture';
 import { omni } from '../../../../services/onlineMusic/omni';
 import { useAudioSettingsStore } from '../../../../stores/useAudioSettingsStore';
@@ -120,6 +121,14 @@ export function useExternalPlaybackBridge({
             sync(previous.playbackRoute !== 'external' || previous.currentSong !== state.currentSong);
         };
         sync(true);
+        // The freeze probe watches the whole time the external route is the one sounding, not just the
+        // seconds after a move: the stall a listener reports can sit in front of the call.
+        const syncProbe = () => {
+            if (isExternalRoute()) startFrameProbeWatch();
+            else stopFrameProbeWatch();
+        };
+        syncProbe();
+        const unsubscribeProbe = usePlaybackStore.subscribe(syncProbe);
         const unsubscribe = usePlaybackStore.subscribe(onPlaybackChange);
         // The switch lives in the desktop settings store, not the playback store: turning it off has
         // to end a running capture at once, without waiting for a store change that never comes.
@@ -127,6 +136,8 @@ export function useExternalPlaybackBridge({
         return () => {
             unsubscribeSettings();
             unsubscribe();
+            unsubscribeProbe();
+            stopFrameProbeWatch();
             stopExternalSpectrumCapture();
         };
     }, []);

@@ -25,6 +25,7 @@ export const IPC_CHANNELS = {
     'clear-audio-cache': { level: 'first-party', why: '清空音频缓存（firstParty）' },
     'clear-cover-cache': { level: 'first-party', why: '清空封面缓存（firstParty）' },
     'clear-local-cover-assets': { level: 'first-party', why: '清空本地歌曲封面（firstParty）' },
+    'debug-frame-probe': { level: 'first-party', why: '写运行日志的冻结诊断，标记由拖条和播放键发出（宿主注入的来源校验，不可信来源静默忽略）' },
     'debug-get-rendered-fonts': { level: 'first-party', why: '现状：有来源校验' },
     'debug-get-state': { level: 'first-party', why: '调试状态，含本机日志路径（宿主注入的来源校验）' },
     'debug-main-lines-ready': { level: 'first-party', why: '订阅主进程日志，日志里可能有敏感内容（宿主注入的来源校验，不可信来源静默忽略）' },
